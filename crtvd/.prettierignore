@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/
+web/public/wasm/
+test-results/
+playwright-report/
+package-lock.json

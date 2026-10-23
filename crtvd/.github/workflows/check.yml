@@ -1,0 +1,28 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '6.0.13'
+          actions-cache-folder: emsdk-cache
+      - run: npm ci
+      - run: npm run test:native
+      - run: npm run build
+      - run: npm run test:wasm
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results
+          path: test-results/

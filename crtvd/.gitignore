@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+web/public/wasm/*.js
+web/public/wasm/*.wasm
+web/public/wasm/build.json
+test-results/
+playwright-report/
+*.log
+.DS_Store

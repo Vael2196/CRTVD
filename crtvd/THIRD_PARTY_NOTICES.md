@@ -1,0 +1,34 @@
+# Third-party notices
+
+## Oklab transform
+
+The Oklab conversion in `engine/src/engine.cpp` follows the published transform
+and MIT-licensed reference implementation by Björn Ottosson:
+https://bottosson.github.io/posts/oklab/
+
+Copyright (c) 2020 Björn Ottosson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Runtime and web dependencies
+
+React/React DOM and all build/test dependencies retain their package licences.
+Emscripten's generated loader and linked runtime components retain the licences
+from the corresponding SDK distribution. No external image, icon, or font asset
+is bundled; the landscape sample and decorative UI shapes are generated locally.
