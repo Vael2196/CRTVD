@@ -132,33 +132,7 @@ struct Box {
     }
 };
 
-std::vector<Rgb> adaptive(const std::vector<Pixel> &pixels, int count) {
-    struct Bin {
-        std::array<double, 3> sum{};
-        double weight = 0;
-    };
-    std::vector<Bin> bins(32 * 32 * 32);
-    // Deterministic stratified sampling caps palette construction cost. Alpha
-    // weights each contribution; fully invisible pixels never affect palettes.
-    const auto samples = std::min<std::size_t>(pixels.size(), 65'536);
-    for (std::size_t i = 0; i < samples; ++i) {
-        const auto &p = pixels[i * pixels.size() / samples];
-        if (p.alpha <= 0)
-            continue;
-        const auto rgb = encode(p.rgb);
-        auto &b = bins[(rgb[0] >> 3) * 1024 + (rgb[1] >> 3) * 32 + (rgb[2] >> 3)];
-        b.weight += p.alpha;
-        for (int c = 0; c < 3; ++c)
-            b.sum[c] += p.rgb[c] * p.alpha;
-    }
-    Box first;
-    for (const auto &b : bins)
-        if (b.weight > 0) {
-            Vec rgb{};
-            for (int c = 0; c < 3; ++c)
-                rgb[c] = static_cast<float>(b.sum[c] / b.weight);
-            first.samples.push_back({rgb, oklab(rgb), b.weight});
-        }
+std::vector<Rgb> cut_palette(Box first, int count) {
     if (first.samples.empty())
         return {{{0, 0, 0}}};
     first.measure();
@@ -212,6 +186,35 @@ std::vector<Rgb> adaptive(const std::vector<Pixel> &pixels, int count) {
     palette.erase(std::unique(palette.begin(), palette.end()), palette.end());
     return palette;
 }
+std::vector<Rgb> adaptive(const std::vector<Pixel> &pixels, int count) {
+    struct Bin {
+        std::array<double, 3> sum{};
+        double weight = 0;
+    };
+    std::vector<Bin> bins(32 * 32 * 32);
+    // Deterministic stratified sampling caps palette construction cost. Alpha
+    // weights each contribution; fully invisible pixels never affect palettes.
+    const auto samples = std::min<std::size_t>(pixels.size(), 65'536);
+    for (std::size_t i = 0; i < samples; ++i) {
+        const auto &p = pixels[i * pixels.size() / samples];
+        if (p.alpha <= 0)
+            continue;
+        const auto rgb = encode(p.rgb);
+        auto &b = bins[(rgb[0] >> 3) * 1024 + (rgb[1] >> 3) * 32 + (rgb[2] >> 3)];
+        b.weight += p.alpha;
+        for (int c = 0; c < 3; ++c)
+            b.sum[c] += p.rgb[c] * p.alpha;
+    }
+    Box first;
+    for (const auto &b : bins)
+        if (b.weight > 0) {
+            Vec rgb{};
+            for (int c = 0; c < 3; ++c)
+                rgb[c] = static_cast<float>(b.sum[c] / b.weight);
+            first.samples.push_back({rgb, oklab(rgb), b.weight});
+        }
+    return cut_palette(std::move(first), count);
+}
 
 std::vector<Rgb> make_palette(const std::vector<Pixel> &pixels, const Options &o) {
     switch (o.palette) {
@@ -229,7 +232,8 @@ std::vector<Rgb> make_palette(const std::vector<Pixel> &pixels, const Options &o
 
 } // namespace
 
-Result process(std::span<const std::uint8_t> input, int iw, int ih, const Options &o) {
+Result process(std::span<const std::uint8_t> input, int iw, int ih, const Options &o,
+               std::span<const std::uint8_t> palette_override) {
     const auto n = checked_pixels(iw, ih, max_input_pixels, "Input");
     const auto out_n = checked_pixels(o.width, o.height, max_output_pixels, "Output");
     if (input.size() != n * 4)
@@ -244,8 +248,18 @@ Result process(std::span<const std::uint8_t> input, int iw, int ih, const Option
         throw std::invalid_argument("Unknown dithering method");
     if (o.resample < Resample::Area || o.resample > Resample::Nearest)
         throw std::invalid_argument("Unknown resampling method");
+    if (o.palette < PaletteMode::Adaptive || o.palette > PaletteMode::Cga)
+        throw std::invalid_argument("Unknown palette");
+    if (!palette_override.empty() && (palette_override.size() % 3 || palette_override.size() > 768))
+        throw std::invalid_argument("Custom palette must contain 1 to 256 RGB triplets");
     auto pixels = resize(input, iw, ih, o);
-    const auto palette = make_palette(pixels, o);
+    std::vector<Rgb> palette;
+    if (palette_override.empty())
+        palette = make_palette(pixels, o);
+    else
+        for (std::size_t i = 0; i < palette_override.size(); i += 3)
+            palette.push_back(
+                {palette_override[i], palette_override[i + 1], palette_override[i + 2]});
     std::vector<Vec> labs, rgb;
     for (const auto &p : palette) {
         rgb.push_back(decode(p));
@@ -312,4 +326,49 @@ Result process(std::span<const std::uint8_t> input, int iw, int ih, const Option
     }
     return result;
 }
+PaletteTrainer::PaletteTrainer() : histogram_(32 * 32 * 32) {}
+
+void PaletteTrainer::add_frame(std::span<const std::uint8_t> input, int iw, int ih,
+                               const Options &o, double seconds) {
+    const auto n = checked_pixels(iw, ih, max_input_pixels, "Input");
+    checked_pixels(o.width, o.height, max_output_pixels, "Output");
+    if (input.size() != n * 4 || o.width > iw || o.height > ih)
+        throw std::invalid_argument("Invalid palette-training frame dimensions or buffer");
+    if (o.resample < Resample::Area || o.resample > Resample::Nearest)
+        throw std::invalid_argument("Unknown resampling method");
+    if (!std::isfinite(seconds) || seconds <= 0 || seconds > 30)
+        throw std::invalid_argument(
+            "Frame duration must be finite, positive and at most 30 seconds");
+    const auto pixels = resize(input, iw, ih, o);
+    const auto samples = std::min<std::size_t>(pixels.size(), 4096);
+    for (std::size_t i = 0; i < samples; ++i) {
+        const auto &p = pixels[i * pixels.size() / samples];
+        if (p.alpha <= 0)
+            continue;
+        const auto rgb = encode(p.rgb);
+        auto &bin = histogram_[(rgb[0] >> 3) * 1024 + (rgb[1] >> 3) * 32 + (rgb[2] >> 3)];
+        const double weight = p.alpha * seconds / static_cast<double>(samples);
+        for (int c = 0; c < 3; ++c)
+            bin[c] += p.rgb[c] * weight;
+        bin[3] += weight;
+    }
+}
+
+std::vector<std::uint8_t> PaletteTrainer::finish(int colours) const {
+    if (colours < 2 || colours > 256)
+        throw std::invalid_argument("Palette size must be between 2 and 256");
+    Box first;
+    for (const auto &bin : histogram_)
+        if (bin[3] > 0) {
+            Vec rgb{};
+            for (int c = 0; c < 3; ++c)
+                rgb[c] = static_cast<float>(bin[c] / bin[3]);
+            first.samples.push_back({rgb, oklab(rgb), bin[3]});
+        }
+    std::vector<std::uint8_t> output;
+    for (const auto &rgb : cut_palette(std::move(first), colours))
+        output.insert(output.end(), rgb.begin(), rgb.end());
+    return output;
+}
+
 } // namespace crtvd

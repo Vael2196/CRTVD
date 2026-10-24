@@ -32,3 +32,17 @@ React/React DOM and all build/test dependencies retain their package licences.
 Emscripten's generated loader and linked runtime components retain the licences
 from the corresponding SDK distribution. No external image, icon, or font asset
 is bundled; the landscape sample and decorative UI shapes are generated locally.
+
+## Animation dependencies
+
+The GIF reader uses gifuct-js 2.1.2 (MIT, copyright 2015 Matt Way).
+The GIF writer uses gifenc 1.0.3 (MIT, copyright 2017 Matt DesLauriers).
+Their full licence texts are distributed in `web/public/notices/`.
+
+Video containers and WebCodecs integration use Mediabunny 1.62.1, under the
+Mozilla Public License 2.0. Its source is used unmodified. The source-bearing
+package is available at:
+https://registry.npmjs.org/mediabunny/-/mediabunny-1.62.1.tgz
+
+The full MPL 2.0 text is distributed in `web/public/notices/mediabunny-MPL-2.0.txt`.
+Third-party components remain under their respective licences.

@@ -259,6 +259,48 @@ int main() {
         crtvd_result_free(r);
         crtvd_result_free(nullptr);
     });
+    test("clip palette training keeps one reusable palette across frames", [] {
+        const std::vector<std::uint8_t> red{255, 0, 0, 255}, blue{0, 0, 255, 255};
+        crtvd::Options o;
+        o.width = 1;
+        o.height = 1;
+        o.dither = crtvd::Dither::None;
+        crtvd::PaletteTrainer trainer;
+        trainer.add_frame(red, 1, 1, o, .1);
+        trainer.add_frame(blue, 1, 1, o, .2);
+        const auto palette = trainer.finish(2);
+        check(palette.size() == 6, "Palette should contain both frame colours");
+        const auto a = crtvd::process(red, 1, 1, o, palette),
+                   b = crtvd::process(blue, 1, 1, o, palette);
+        check(a.palette == b.palette && a.rgba == red && b.rgba == blue,
+              "Shared palette changed frame colours");
+        check(trainer.finish(2) == palette, "Training result isn't deterministic");
+    });
+    test("clip palette weights colours by display duration", [] {
+        const std::vector<std::uint8_t> a{100, 0, 0, 255}, b{102, 0, 0, 255};
+        crtvd::Options o;
+        o.width = 1;
+        o.height = 1;
+        crtvd::PaletteTrainer trainer;
+        trainer.add_frame(a, 1, 1, o, .1);
+        trainer.add_frame(b, 1, 1, o, .9);
+        check(trainer.finish(2) == std::vector<std::uint8_t>({102, 0, 0}),
+              "Duration weighting was lost");
+    });
+    test("custom palettes and training inputs are validated", [] {
+        crtvd::Options o;
+        o.width = 1;
+        o.height = 1;
+        const std::vector<std::uint8_t> pixel{10, 20, 30, 255}, invalid{1, 2};
+        rejects([&] { crtvd::process(pixel, 1, 1, o, invalid); });
+        crtvd::PaletteTrainer trainer;
+        rejects([&] { trainer.add_frame(pixel, 1, 1, o, 0); });
+        rejects(
+            [&] { trainer.add_frame(pixel, 1, 1, o, std::numeric_limits<double>::infinity()); });
+        rejects([&] { trainer.finish(257); });
+        check(trainer.finish(2) == std::vector<std::uint8_t>({0, 0, 0}),
+              "Empty training fallback failed");
+    });
     std::cout << passed << " passed, " << failed << " failed\n";
     return failed ? 1 : 0;
 }

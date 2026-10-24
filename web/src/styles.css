@@ -1067,3 +1067,220 @@ footer {
     font-size: 33px;
   }
 }
+
+/* Animation is a separate mode; still-image processing remains unchanged. */
+.media-mode-switch {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0e1711;
+}
+.media-mode-switch button {
+  border: 0;
+  background: none;
+  border-radius: 4px;
+  padding: 8px 13px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.media-mode-switch button[aria-pressed='true'] {
+  color: #d9e6cf;
+  background: #344331;
+}
+.animation-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  grid-column: 1/-1;
+}
+.animation-controls .upload-card {
+  min-height: 100px;
+}
+.animation-controls input[type='color'] {
+  display: block;
+  margin-top: 10px;
+  width: 100%;
+  height: 34px;
+  background: #202b23;
+  border: 1px solid #3a483b;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.animation-preview .preview-toolbar > strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.animation-previews {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 27px;
+  min-height: 300px;
+  background: #101813;
+}
+.animation-previews figure {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.animation-previews figcaption {
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  color: #a8b6a4;
+  align-self: flex-start;
+  margin-bottom: 12px;
+}
+.animation-previews img,
+.animation-previews video {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border-radius: 5px;
+  background: repeating-conic-gradient(#253028 0 25%, #1c261f 0 50%) 50%/16px 16px;
+  image-rendering: pixelated;
+}
+.animation-previews figure:first-child img,
+.animation-previews figure:first-child video {
+  image-rendering: auto;
+}
+.animation-placeholder {
+  min-height: 230px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.8;
+  color: #80937e;
+  border: 1px dashed #344630;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.animation-notes {
+  padding: 16px 26px;
+  color: #9cad96;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.animation-notes p {
+  margin: 6px 0;
+}
+.animation-notes p:first-child {
+  color: #d0dfbe;
+}
+.animation-progress {
+  padding: 18px 26px;
+  color: #d5e2c8;
+  font-size: 11px;
+}
+.animation-progress progress {
+  display: block;
+  width: 100%;
+  height: 9px;
+  margin-top: 12px;
+  accent-color: var(--lime);
+}
+.animation-actions {
+  margin-top: auto;
+  flex-wrap: wrap;
+}
+.animation-actions .export-actions {
+  flex-wrap: wrap;
+}
+.secondary-button {
+  border: 1px solid #637754;
+  background: #26351f;
+  color: #d2e4bc;
+  border-radius: 5px;
+  padding: 10px 16px;
+  font-size: 11px;
+}
+@media (max-width: 1050px) {
+  .brand-name {
+    display: none;
+  }
+  .animation-previews {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .animation-placeholder {
+    min-height: 180px;
+  }
+  .animation-actions .export-actions {
+    width: auto;
+  }
+}
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 90px;
+    padding: 15px 0;
+    gap: 12px;
+  }
+  .topbar .local-badge {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  .media-mode-switch {
+    margin-left: auto;
+  }
+  .media-mode-switch button {
+    padding: 7px 10px;
+    font-size: 10px;
+  }
+  .animation-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+  }
+  .animation-controls {
+    display: block;
+  }
+  .animation-previews {
+    padding: 18px;
+    grid-template-columns: 1fr 1fr;
+    gap: 13px;
+    min-height: 190px;
+  }
+  .animation-placeholder {
+    font-size: 10px;
+    min-height: 130px;
+  }
+  .animation-notes {
+    padding: 13px 17px;
+    font-size: 10px;
+  }
+  .animation-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .animation-actions .export-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .animation-editor h1 {
+    font-size: 34px;
+  }
+  .animation-progress {
+    padding: 16px 18px;
+  }
+}
+@media (max-width: 390px) {
+  .animation-previews {
+    grid-template-columns: 1fr;
+  }
+  .animation-fields {
+    grid-template-columns: 1fr;
+  }
+  .animation-editor h1 {
+    font-size: 30px;
+  }
+}

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(crtvd VERSION 0.1.0 LANGUAGES CXX)
+project(crtvd VERSION 0.2.0 LANGUAGES CXX)
 
 add_library(crtvd_core engine/src/engine.cpp)
 target_include_directories(crtvd_core PUBLIC engine/include)
@@ -20,7 +20,7 @@ if(EMSCRIPTEN)
     "-sENVIRONMENT=web,worker,node" "-sFILESYSTEM=0"
     "-sALLOW_MEMORY_GROWTH=1" "-sINITIAL_MEMORY=33554432"
     "-sMAXIMUM_MEMORY=268435456" "-sSTACK_SIZE=1048576"
-    "-sEXPORTED_FUNCTIONS=['_malloc','_free','_crtvd_process','_crtvd_last_error','_crtvd_result_pixels','_crtvd_result_length','_crtvd_result_palette','_crtvd_result_palette_length','_crtvd_result_free']"
+    "-sEXPORTED_FUNCTIONS=['_malloc','_free','_crtvd_process','_crtvd_process_palette','_crtvd_palette_create','_crtvd_palette_add','_crtvd_palette_finish','_crtvd_palette_free','_crtvd_last_error','_crtvd_result_pixels','_crtvd_result_length','_crtvd_result_palette','_crtvd_result_palette_length','_crtvd_result_free']"
     "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString','HEAPU8']")
 else()
   include(CTest)

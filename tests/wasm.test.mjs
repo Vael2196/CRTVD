@@ -6,6 +6,55 @@ import createCrtvd from '../web/public/wasm/crtvd.js';
 const wasmBinary = await readFile(new URL('../web/public/wasm/crtvd.wasm', import.meta.url));
 const engine = await createCrtvd({ wasmBinary });
 
+test('actual Wasm: duration-weighted clip palette trainer and custom palette API', () => {
+  const pointer = engine._malloc(4),
+    trainer = engine._crtvd_palette_create();
+  let paletteResult = 0,
+    result = 0,
+    palettePointer = 0;
+  try {
+    assert.ok(trainer);
+    engine.HEAPU8.set([255, 0, 0, 255], pointer);
+    assert.equal(engine._crtvd_palette_add(trainer, pointer, 4, 1, 1, 1, 1, 0, 0.1), 1);
+    engine.HEAPU8.set([0, 0, 255, 255], pointer);
+    assert.equal(engine._crtvd_palette_add(trainer, pointer, 4, 1, 1, 1, 1, 0, 0.2), 1);
+    paletteResult = engine._crtvd_palette_finish(trainer, 2);
+    assert.ok(paletteResult);
+    const p = engine._crtvd_result_palette(paletteResult),
+      n = engine._crtvd_result_palette_length(paletteResult);
+    const palette = engine.HEAPU8.slice(p, p + n);
+    assert.equal(n, 6);
+    palettePointer = engine._malloc(n);
+    engine.HEAPU8.set(palette, palettePointer);
+    result = engine._crtvd_process_palette(
+      pointer,
+      4,
+      1,
+      1,
+      1,
+      1,
+      0,
+      16,
+      0,
+      1,
+      0,
+      palettePointer,
+      n,
+    );
+    assert.ok(result);
+    const out = engine._crtvd_result_pixels(result);
+    assert.deepEqual([...engine.HEAPU8.slice(out, out + 4)], [0, 0, 255, 255]);
+    assert.equal(engine._crtvd_palette_add(trainer, pointer, 4, 1, 1, 1, 1, 0, NaN), 0);
+    assert.match(engine.UTF8ToString(engine._crtvd_last_error()), /duration/);
+  } finally {
+    if (result) engine._crtvd_result_free(result);
+    if (paletteResult) engine._crtvd_result_free(paletteResult);
+    if (palettePointer) engine._free(palettePointer);
+    engine._crtvd_palette_free(trainer);
+    engine._free(pointer);
+  }
+});
+
 function processImage(pixels, width, height, options = {}) {
   const o = {
     width,

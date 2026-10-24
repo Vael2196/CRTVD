@@ -8,3 +8,5 @@ test-results/
 playwright-report/
 *.log
 .DS_Store
+# Existing checkouts may retain ignored build outputs in the former nested tree.
+/crtvd/

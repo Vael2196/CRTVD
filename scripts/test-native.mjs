@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-mkdirSync(path.join(root, 'build/native'), { recursive: true });
+const buildDirectory =
+  process.env.CRTVD_SANITIZE === '1' ? 'build/native-sanitized' : 'build/native';
+mkdirSync(path.join(root, buildDirectory), { recursive: true });
 const compiler = process.env.CXX || 'g++';
 const binary = path.join(
   root,
-  'build/native',
+  buildDirectory,
   process.platform === 'win32' ? 'crtvd_tests.exe' : 'crtvd_tests',
 );
 const flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Wpedantic'];

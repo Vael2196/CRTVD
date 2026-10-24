@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -36,6 +37,21 @@ inline constexpr int max_dimension = 16'384;
 
 // Input and output use straight-alpha, sRGB RGBA8. Processing itself is
 // independent of browsers, codecs, file paths, and UI frameworks.
-Result process(std::span<const std::uint8_t> rgba, int width, int height, const Options &options);
+Result process(std::span<const std::uint8_t> rgba, int width, int height, const Options &options,
+               std::span<const std::uint8_t> palette_override = {});
+
+// A bounded histogram shared across a clip. Each frame contributes according
+// to its display duration; finish() produces one palette for all frames.
+class PaletteTrainer {
+  public:
+    PaletteTrainer();
+    void add_frame(std::span<const std::uint8_t> rgba, int width, int height,
+                   const Options &options, double seconds);
+    std::vector<std::uint8_t> finish(int colours) const;
+
+  private:
+    // Per bin: accumulated linear R, G, B and population weight (~1 MiB).
+    std::vector<std::array<double, 4>> histogram_;
+};
 
 } // namespace crtvd

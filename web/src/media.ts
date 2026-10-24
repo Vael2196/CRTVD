@@ -2,7 +2,9 @@ import type { SourceImage } from './types';
 
 export async function decodeImage(file: File): Promise<SourceImage> {
   if (!['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.type))
-    throw new Error('Choose a PNG, JPEG, WebP or AVIF still image.');
+    throw new Error(
+      'Choose a PNG, JPEG, WebP or AVIF still image. For GIF or video, use Animation.',
+    );
   if (file.size > 32 * 1024 * 1024) throw new Error('Choose a file smaller than 32 MB.');
   const bitmap = await createImageBitmap(file);
   try {
