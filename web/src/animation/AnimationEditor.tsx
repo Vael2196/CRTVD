@@ -6,6 +6,7 @@ import type { AnimationOptions, AnimationResponse, ClipInfo } from './types';
 import { animationSize, LIMITS } from './limits';
 import { useAnimationWorker } from './useAnimationWorker';
 import { makeDemoGif } from './demo';
+import { snapshotFile, isCancelled } from '../uploads';
 
 type Converted = Extract<AnimationResponse, { type: 'done' }> & { url: string; filename: string };
 const defaults: AnimationOptions = {
@@ -23,6 +24,8 @@ export function AnimationEditor() {
   const [loading, setLoading] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const loadId = useRef(0);
+  const reading = useRef<AbortController | null>(null);
+  useEffect(() => () => reading.current?.abort(), []);
   const { run, stop, busy, progress } = useAnimationWorker();
   useEffect(
     () => () => {
@@ -49,23 +52,35 @@ export function AnimationEditor() {
   const load = async (file?: File) => {
     if (!file) return;
     const id = ++loadId.current;
+    reading.current?.abort();
+    const controller = new AbortController();
+    reading.current = controller;
+    stop();
     setLoading(true);
     setError('');
     setOutput(null);
     try {
-      const answer = await run({ type: 'probe', file });
+      const owned = await snapshotFile(file, 'animation', controller.signal);
+      if (id !== loadId.current) return;
+      const answer = await run({ type: 'probe', file: owned });
       if (answer.type === 'info' && id === loadId.current)
-        setSource({ file, info: answer.info, url: URL.createObjectURL(file) });
+        setSource({ file: owned, info: answer.info, url: URL.createObjectURL(owned) });
     } catch (e) {
-      if (id === loadId.current && !(e instanceof DOMException && e.name === 'AbortError'))
+      if (id === loadId.current && !isCancelled(e))
         setError(e instanceof Error ? e.message : 'Could not read this clip.');
     } finally {
-      if (id === loadId.current) setLoading(false);
+      if (id === loadId.current) {
+        reading.current = null;
+        setLoading(false);
+      }
     }
   };
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    void load(e.target.files?.[0]);
-    e.target.value = '';
+    const field = e.currentTarget;
+    const selected = field.files?.[0];
+    void load(selected).finally(() => {
+      if (field.files?.[0] === selected) field.value = '';
+    });
   };
   const drop = (e: DragEvent) => {
     e.preventDefault();
@@ -92,6 +107,8 @@ export function AnimationEditor() {
   };
   const cancel = () => {
     loadId.current++;
+    reading.current?.abort();
+    reading.current = null;
     stop();
     setLoading(false);
     setError('');
@@ -171,7 +188,7 @@ export function AnimationEditor() {
           >
             Try the moving landscape <span aria-hidden="true">↗</span>
           </button>
-          <fieldset disabled={busy} className="animation-fields">
+          <fieldset disabled={busy || loading} className="animation-fields">
             <div className="control-group">
               <div className="label-row">
                 <label htmlFor="animation-width">Output width</label>
@@ -328,7 +345,7 @@ export function AnimationEditor() {
             <strong>In motion</strong>
             <span className="engine-status" role="status">
               <i />
-              {busy
+              {busy || loading
                 ? loading
                   ? 'Reading clip'
                   : progress?.phase === 'palette'
@@ -432,7 +449,7 @@ export function AnimationEditor() {
               {error}
             </div>
           )}
-          {busy && (
+          {(busy || loading) && (
             <div className="animation-progress">
               <label htmlFor="conversion-progress">
                 {loading
@@ -463,7 +480,13 @@ export function AnimationEditor() {
           )}
           <div className="export-bar animation-actions">
             <div>
-              <strong>{busy ? 'One frame at a time.' : 'Ready when you are.'}</strong>
+              <strong>
+                {loading
+                  ? 'Reading your clip…'
+                  : busy
+                    ? 'One frame at a time.'
+                    : 'Ready when you are.'}
+              </strong>
               <span>
                 {source
                   ? `${size.width} × ${size.height} processing resolution`
@@ -471,7 +494,7 @@ export function AnimationEditor() {
               </span>
             </div>
             <div className="export-actions">
-              {busy ? (
+              {busy || loading ? (
                 <button className="secondary-button" onClick={cancel}>
                   Cancel
                 </button>

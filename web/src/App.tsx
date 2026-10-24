@@ -4,6 +4,7 @@ import { decodeImage, demoImage, downloadPng, maxOutputWidth, outputSize } from 
 import { DEFAULT_SETTINGS } from './types';
 import type { Settings, SourceImage } from './types';
 import { useEngine } from './useEngine';
+import { isCancelled } from './uploads';
 import { lazy, Suspense } from 'react';
 const AnimationEditor = lazy(() =>
   import('./animation/AnimationEditor').then((m) => ({ default: m.AnimationEditor })),
@@ -67,6 +68,8 @@ function StillImageEditor() {
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const nativeCanvas = useRef<HTMLCanvasElement | null>(null);
   const loadId = useRef(0);
+  const reading = useRef<AbortController | null>(null);
+  useEffect(() => () => reading.current?.abort(), []);
   const { ready, processing, error, result } = useEngine(source, settings);
 
   useEffect(() => {
@@ -101,21 +104,30 @@ function StillImageEditor() {
   const load = async (file?: File) => {
     if (!file) return;
     const id = ++loadId.current;
+    reading.current?.abort();
+    const controller = new AbortController();
+    reading.current = controller;
     setLoading(true);
     setLoadError('');
     try {
-      const decoded = await decodeImage(file);
+      const decoded = await decodeImage(file, controller.signal);
       if (id === loadId.current) setSource(decoded);
     } catch (e) {
-      if (id === loadId.current)
+      if (id === loadId.current && !isCancelled(e))
         setLoadError(e instanceof Error ? e.message : 'Could not read this image.');
     } finally {
-      if (id === loadId.current) setLoading(false);
+      if (id === loadId.current) {
+        reading.current = null;
+        setLoading(false);
+      }
     }
   };
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    void load(e.target.files?.[0]);
-    e.target.value = '';
+    const field = e.currentTarget;
+    const selected = field.files?.[0];
+    void load(selected).finally(() => {
+      if (field.files?.[0] === selected) field.value = '';
+    });
   };
   const drop = (e: DragEvent) => {
     e.preventDefault();
@@ -124,6 +136,8 @@ function StillImageEditor() {
   };
   const useSample = () => {
     loadId.current++;
+    reading.current?.abort();
+    reading.current = null;
     setLoading(false);
     setLoadError('');
     setSource(demoImage());

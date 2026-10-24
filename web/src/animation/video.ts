@@ -8,7 +8,7 @@ export async function openClip(file: File): Promise<ClipSource> {
     throw new Error('Animation inputs must be at most 64 MiB (GIF: 16 MiB).');
   const header = String.fromCharCode(...new Uint8Array(await file.slice(0, 6).arrayBuffer()));
   if (header === 'GIF87a' || header === 'GIF89a') return readGif(await file.arrayBuffer());
-  if (!/\.(mp4|webm)$/i.test(file.name))
+  if (!/\.(mp4|webm)$/i.test(file.name) && !['video/mp4', 'video/webm'].includes(file.type))
     throw new Error('Choose a GIF, MP4 (H.264) or WebM (VP8/VP9) file.');
   if (typeof VideoDecoder === 'undefined')
     throw new Error(

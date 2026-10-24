@@ -1,26 +1,75 @@
 import type { SourceImage } from './types';
+import { snapshotFile, throwIfCancelled } from './uploads';
 
-export async function decodeImage(file: File): Promise<SourceImage> {
-  if (!['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.type))
+function imageCanvas(
+  image: CanvasImageSource,
+  width: number,
+  height: number,
+  name: string,
+): SourceImage {
+  if (width > 16384 || height > 16384 || width * height > 16777216)
     throw new Error(
-      'Choose a PNG, JPEG, WebP or AVIF still image. For GIF or video, use Animation.',
+      'This image is too large. Use at most 16,777,216 pixels and 16,384 pixels per side.',
     );
-  if (file.size > 32 * 1024 * 1024) throw new Error('Choose a file smaller than 32 MB.');
-  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Your browser could not create an image canvas.');
+  context.drawImage(image, 0, 0);
+  return { name, width, height, canvas };
+}
+
+export async function decodeImage(file: File, signal?: AbortSignal): Promise<SourceImage> {
+  const owned = await snapshotFile(file, 'image', signal);
+  let bitmap: ImageBitmap | undefined;
   try {
-    if (bitmap.width > 16384 || bitmap.height > 16384 || bitmap.width * bitmap.height > 16777216)
-      throw new Error(
-        'This image is too large. Use at most 16,777,216 pixels and 16,384 pixels per side.',
-      );
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('Your browser could not create an image canvas.');
-    context.drawImage(bitmap, 0, 0);
-    return { name: file.name, width: bitmap.width, height: bitmap.height, canvas };
+    if (typeof createImageBitmap === 'function') bitmap = await createImageBitmap(owned);
+  } catch {
+    // Some mobile decoders reject a bitmap even when the regular <img> path
+    // can decode the same bytes. Fall back without changing file formats.
+  }
+  if (bitmap) {
+    try {
+      throwIfCancelled(signal);
+      return imageCanvas(bitmap, bitmap.width, bitmap.height, file.name);
+    } finally {
+      bitmap.close();
+    }
+  }
+  throwIfCancelled(signal);
+  const image = new Image();
+  const url = URL.createObjectURL(owned);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        image.onload = image.onerror = null;
+        signal?.removeEventListener('abort', abort);
+      };
+      const abort = () => {
+        cleanup();
+        reject(new DOMException('Cancelled', 'AbortError'));
+      };
+      image.onload = () => {
+        cleanup();
+        resolve();
+      };
+      image.onerror = () => {
+        cleanup();
+        reject(
+          new Error(
+            'This browser could not decode the image. Try saving it as JPEG or PNG first; HEIC/HEIF photos need conversion.',
+          ),
+        );
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+      image.src = url;
+    });
+    throwIfCancelled(signal);
+    return imageCanvas(image, image.naturalWidth, image.naturalHeight, file.name);
   } finally {
-    bitmap.close();
+    image.src = '';
+    URL.revokeObjectURL(url);
   }
 }
 
