@@ -1,203 +1,241 @@
-# CRT Visual Downscaler
+<h1 align="center">CRT Visual Downscaler</h1>
 
-**CRTVD** turns photographs, GIFs and short videos into small, palette-limited
-visual assets. Its reusable C++20 engine runs in the browser through WebAssembly.
-The React interface handles still-image previews, animation jobs and local export.
+<p align="center">
+  <strong>Small palettes. Big pixels.</strong><br />
+  Turn photos, GIFs and short videos into low-resolution, limited-palette artwork.
+</p>
 
-**Version 0.3: reusable engine, native CLI and a refreshed early-web interface.** No uploads, accounts or backend service
-are required. CRT display simulation is a separate future stage.
+<p align="center">
+  <a href="https://crtvd.vaell.dev"><strong>Open CRTVD</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#what-you-can-make">Features</a>
+  &nbsp;·&nbsp;
+  <a href="#one-engine-three-ways-to-use-it">Engine and API</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/Vael2196/CRTVD/issues">Report an issue</a>
+</p>
 
-## Features
+<p align="center">
+  <a href="https://github.com/Vael2196/CRTVD/actions/workflows/check.yml"><img src="https://github.com/Vael2196/CRTVD/actions/workflows/check.yml/badge.svg?branch=main" alt="Build and test" /></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-20-00599c?style=flat" alt="C++20" />
+  <img src="https://img.shields.io/badge/WebAssembly-654ff0?style=flat" alt="WebAssembly" />
+  <img src="https://img.shields.io/badge/React-TypeScript-3178c6?style=flat" alt="React and TypeScript" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Licence-MIT-4c7a52?style=flat" alt="MIT licence" /></a>
+</p>
 
-- Linear-light area downsampling or nearest-neighbour sampling.
-- Adaptive palettes with Oklab colour matching, plus three fixed palettes.
-- Bayer ordered dithering and serpentine Floyd–Steinberg error diffusion.
-- Transparency-aware filtering and exact pixel-scale PNG export.
-- A duration-weighted **shared palette across an animation**, rather than a new
-  adaptive palette for each frame.
-- GIF patch compositing, disposal 0–3, local palettes, interlacing, original
-  delays and loop metadata.
-- Browser-native video decoding and encoding, with runtime codec checks.
-- Frame-by-frame processing, explicit progress and immediate cancellation.
+CRTVD is a media-processing tool for artwork that belongs at smaller resolutions:
+dithered photographs, restrained colour palettes and animations with a consistent set of colours.
+An early-web interface lets you experiment in the browser; a reusable package and command-line
+tool bring the same processing into other projects.
+
+The transformation runs on your device. Your selected files are processed locally, with no
+media upload or account required.
+
+## What you can make
+
+- **Still images with deliberate limits.** Reduce resolution, choose an adaptive palette of
+  2–256 colours, or use monochrome, handheld green and CGA-inspired palettes.
+- **Two approaches to downsampling.** Linear-light area averaging filters detail before reduction;
+  nearest neighbour keeps individual samples crisp.
+- **Dithered colour transitions.** Choose 4 × 4 Bayer patterns, serpentine Floyd–Steinberg error
+  diffusion, or no dithering, with adjustable strength.
+- **Animations with one palette per clip.** Adaptive mode learns a palette from the whole animation,
+  weighted by each frame's display duration, then reuses it for every frame.
+- **Useful exports.** Save transparent PNGs at their processing size or an integer pixel scale.
+  Export animations as GIF, WebM or MP4 where the browser supports the required codecs.
+- **An interface with an earlier-web feel.** Bevelled panels, blue title bars, a tiled navy
+  background and live previews, with progress reporting and cancellation for animation jobs.
+
+CRTVD prepares assets for retro-inspired games, interfaces and later CRT rendering. Its current
+effects are resolution reduction, palette quantisation and dithering; scanlines, phosphor masks,
+screen curvature and hardware-accurate CRT simulation are outside this release.
+
+## Try it
+
+1. Open [CRTVD](https://crtvd.vaell.dev) and choose **Still image** or **Animation**.
+2. Use the built-in sample or select a supported file from your device.
+3. Set the output width, palette and dithering. For still images, compare the original and result
+   in the split preview.
+4. Download the PNG, or select an animation format and run the conversion.
+
+For a quick starting point, try **Soft dusk** for an adaptive palette, **Paper & ink** for
+monochrome, or **Pocket green** for a handheld-inspired still image.
+
+## Formats and current scope
+
+| Workflow             | Input                                                      | Output                                                |
+| -------------------- | ---------------------------------------------------------- | ----------------------------------------------------- |
+| Browser still images | PNG, JPEG, WebP, AVIF, subject to browser decoding support | RGBA PNG, with optional integer enlargement           |
+| Browser animation    | GIF; MP4 with H.264/AVC; WebM with VP8 or VP9              | GIF; WebM with VP8; MP4 with H.264/AVC                |
+| Native CLI           | PNG, JPEG                                                  | RGBA PNG, with optional palette and JSON report files |
+
+Animation jobs are limited to **30 seconds and 900 frames**, with at most **512 pixels in output
+width** and **262,144 processing pixels per frame**. GIF inputs are limited to **16 MiB**, video
+inputs to **64 MiB**, and encoded outputs to **64 MiB**.
+
+GIF inputs retain their frame timing. Video inputs are sampled at the selected 10–30 fps.
+GIF export uses binary transparency; video exports composite onto the selected background and
+**omit audio**. Lossy video encoding can introduce colours beyond the engine's palette.
+MP4 export pads odd dimensions to even dimensions.
+
+Video support is checked at runtime and varies by browser and operating system. HEVC, AV1,
+MOV and HDR are outside the supported profiles. See the [animation notes](docs/ANIMATION.md)
+for frame compositing, timing, size limits and transparency behaviour.
+
+## One engine, three ways to use it
+
+The processing engine is written in C++20 and works with RGBA pixel buffers independently of
+the interface, image codecs and file paths. Emscripten compiles it to WebAssembly for browser
+use; a native build uses the same source.
+
+| Entry point                              | What it provides                                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [Web editor](web/src)                    | React and TypeScript controls, local decoding, worker orchestration, previews and exports                    |
+| [TypeScript/Wasm package](packages/core) | Framework-independent frame processing, shared palette training, typed options and explicit resource cleanup |
+| [Native CLI](native)                     | PNG/JPEG conversion, custom palette input, palette export and machine-readable reports                       |
+
+The package is named `@vael2196/crtvd` and can be built as an installable npm tarball.
+Registry publication is separate from the repository's release build.
+
+### Engineering decisions
+
+- **Keep transformation logic in one place.** Both browser editors use the TypeScript package,
+  while native and Wasm builds share the C++ engine.
+- **Treat light and transparency explicitly.** Area resampling averages in linear light with
+  alpha-weighted colours. Palette matching uses Oklab; transparent pixels do not contaminate
+  neighbouring colours during filtering.
+- **Analyse animations before encoding.** A bounded histogram learns the clip's palette in a
+  first pass. The second pass processes and encodes frames incrementally, without retaining
+  the entire decoded clip.
+- **Keep processing off the interface thread.** Web Workers host the synchronous Wasm calls.
+  Still-image requests discard obsolete results; cancellation terminates animation work.
+- **Make ownership part of the API.** Output buffers are caller-owned copies. Processor and
+  trainer objects expose disposal, and builds verify the source fingerprint and loader/binary
+  hashes before packaging Wasm assets.
+
+Read the [algorithm notes](docs/ALGORITHMS.md), [animation design](docs/ANIMATION.md) and
+[public API](docs/API.md) for implementation details and trade-offs.
 
 ## Run locally
 
-The repository root contains `package.json`, `engine/`, `web/` and `.github/`.
-Use Node.js 22.12+ (24 LTS recommended), Python 3, and Emscripten **6.0.13**.
+Requirements: **Node.js 22.12+** (24 recommended), **Python 3**, Git and
+**Emscripten 6.0.13**. A native C++20 compiler is also needed for the CLI and full test suite.
+
+Install Emscripten using its [official SDK instructions](https://emscripten.org/docs/getting_started/downloads.html).
+For a new SDK installation, select the project's pinned version:
 
 ```bash
+git clone https://github.com/emscripten-core/emsdk.git ~/tools/emsdk
+cd ~/tools/emsdk
+./emsdk install 6.0.13
+./emsdk activate 6.0.13
+source ./emsdk_env.sh
+```
+
+Clone and start CRTVD:
+
+```bash
+git clone https://github.com/Vael2196/CRTVD.git
+cd CRTVD
+
 source ~/tools/emsdk/emsdk_env.sh
 npm ci
 npm run build:wasm
 npm run dev
 ```
 
-Open the local URL printed by Vite. Start with **Still image**, or choose
-**Animation → Try the moving landscape → Convert animation**.
+Open the local URL printed by Vite. Source `emsdk_env.sh` again when building from a new terminal;
+use your actual SDK path if it differs.
 
-Emscripten setup and upgrade commands are in
-[docs/UPGRADING_0_2.md](docs/UPGRADING_0_2.md).
-For this release's patch, test fix and package commands, see
-[docs/UPGRADING_0_3.md](docs/UPGRADING_0_3.md).
-
-## Reusable release
-
-- `@vael2196/crtvd`: framework-independent ESM/TypeScript package with matching
-  Wasm assets, caller-owned output buffers and clip palette training.
-- Native `crtvd` CLI: PNG/JPEG to palette-limited PNG, optional palette/report
-  files, built from the same C++ engine.
-- Frozen reference PNGs checked through both native and Wasm paths.
-- [Measured benchmarks](benchmarks/RESULTS.md), raw runs and a static public
-  report at `/benchmarks.html` after deployment.
-- Automatic fresh UI builds and an isolated server for Playwright, fixing tests
-  that previously served an old `dist` without the Animation navigation.
-
-```bash
-npm run build:native
-./build/native-release/crtvd input.jpg output.png --width 160 --colours 16
-npm run pack:sdk
-```
-
-Install the tarball in `release/` into another project. This local package route
-needs no registry account. Full usage and lifecycle rules: [docs/API.md](docs/API.md).
-The native CLI is currently a still-image tool; GIF/video codecs remain in the
-web app. Benchmark values are measured on a shared Linux host, not guarantees
-for a visitor's browser.
-
-## Supported animation profiles
-
-| Direction | Container       | Codec       | Behaviour                                         |
-| --------- | --------------- | ----------- | ------------------------------------------------- |
-| Input     | GIF87a / GIF89a | GIF LZW     | Original image frames, delays and repeat metadata |
-| Input     | MP4             | H.264 / AVC | SDR; browser decoder required                     |
-| Input     | WebM            | VP8 or VP9  | SDR; browser decoder required                     |
-| Output    | GIF             | GIF LZW     | One global palette; binary transparency           |
-| Output    | WebM            | VP8         | Silent, opaque, lossy; browser encoder required   |
-| Output    | MP4             | H.264 / AVC | Silent, opaque, lossy; browser encoder required   |
-
-All supported input profiles can be converted to any supported output profile.
-Video inputs are sampled at the selected 10–30 fps. GIF inputs retain their
-original frame timing even when exported as video. GIF outputs round absolute
-frame boundaries to centiseconds to avoid cumulative timing drift.
-
-**Video exports omit audio**, including when the input contains it. The editor
-shows this before conversion. Lossy video encoding may introduce nearby RGB
-values beyond the engine's palette; GIF/PNG preserve the palette RGB values.
-
-HEVC/H.265, AV1, MOV, HDR, live media and variable-resolution streams are outside
-this release. An `.mp4` extension alone does not guarantee a supported codec.
-
-## Limits and transparency
-
-- Up to **30 seconds**. GIF input is limited to **900 image frames**; video
-  sampling is limited to **900 output frames**. Longer clips are rejected rather
-  than silently truncated.
-- GIF inputs: **16 MiB**. Video inputs: **64 MiB**. Encoded outputs: **64 MiB**.
-- Input frames: at most **2,073,600 pixels**, and at most **4,096 pixels per side**.
-  Video coded dimensions are checked as well as display dimensions.
-- Animation processing resolution: at most **512 pixels wide** and **262,144 total pixels**.
-  Height follows the source aspect ratio; outputs do not upscale the source.
-- GIF export reserves palette index zero for transparency. An adaptive request
-  of 256 colours therefore uses at most 255 RGB entries plus transparency.
-- GIF alpha is binary: alpha below 128 becomes transparent, otherwise opaque.
-  Video exports composite transparent pixels onto the chosen background in
-  linear light. MP4 pads odd dimensions by one black pixel on the right/bottom;
-  its coded pixel count can therefore slightly exceed the processing limit.
-- GIF delay zero or missing is normalised to 100 ms; nonzero delays are retained.
-  Browser players may impose their own minimum playback delay.
-- GIF disposal 2 uses a transparent background when the animation declares
-  transparency; otherwise it uses the global logical background colour.
-  User-input-controlled GIF timing and reserved disposal values are rejected.
-
-These are practical limits for local browser processing, not a guarantee that
-every low-memory device can process the largest allowed file. Only encoded
-output and a small number of decoded frames are retained; the full raw clip is
-never stored as an array of frames.
-
-## Architecture
-
-| Location                                  | Responsibility                                                       |
-| ----------------------------------------- | -------------------------------------------------------------------- |
-| `engine/src/engine.cpp`                   | Resampling, palette construction, colour matching and dithering      |
-| `PaletteTrainer` in the public C++ header | Persistent, bounded histogram for clip-wide colour analysis          |
-| `engine/src/wasm_api.cpp`                 | C-compatible bridge and explicit result/trainer ownership            |
-| `web/src/engine.worker.ts`                | Existing still-image processing worker                               |
-| `web/src/animation/gif.ts`                | GIF metadata, one-frame decompression and logical-screen compositing |
-| `web/src/animation/video.ts`              | MP4/WebM profile checks and sampled frame decoding                   |
-| `web/src/animation/processor.ts`          | Wasm buffers, palette training and frame conversion                  |
-| `web/src/animation/encode.ts`             | GIF indexing and video container/codec output                        |
-| `web/src/animation/animation.worker.ts`   | Two-pass processing job and progress reporting                       |
-| `web/src/animation/AnimationEditor.tsx`   | Animation settings, previews, cancellation and download              |
-
-The codecs and containers are handled by gifuct-js, gifenc and Mediabunny.
-The image transformation remains in the project's C++ engine. Animation code
-is loaded when its editor is opened, keeping it separate from the initial
-still-image interface.
-
-For adaptive mode, pass one samples each downsampled frame into a bounded C++
-histogram, weighted by its display duration. Pass two processes each frame using
-the finished palette and feeds it to an encoder with backpressure. Fixed palettes
-skip the analysis pass. Read [docs/ANIMATION.md](docs/ANIMATION.md) for details.
-
-## Build, test and deploy
-
-```bash
-npm ci
-source ~/tools/emsdk/emsdk_env.sh
-npx playwright install chromium
-npm test
-```
-
-The complete suite builds the native CLI and Wasm/web release, checks reference
-images and package installation, then runs browser tests. Individual commands:
-
-```bash
-npm run build
-npm run build:native
-npm run test:native
-npm run test:wasm
-npm run test:sdk
-npm run test:cli
-npm run test:references
-npm run test:animation
-npm run pack:sdk
-npm run test:package
-npm run test:e2e
-```
-
-`test:e2e` rebuilds the UI every time, serves it on a dedicated port (4197) and
-refuses to reuse an existing process. A stale Wasm build fails early with the
-rebuild command. Use `TEST_BASE_URL` only when intentionally testing an external
-site; that mode skips local build/server management.
-
-Frozen references are never updated during tests. Maintainers can review and
-regenerate them explicitly using `npm run references:update` after a native
-build. Significant RGB differences are limited to 0.5% of pixels (ignoring
-channel deltas up to 2), with exact alpha. See tests/reference/README.md.
+For a production build and local preview:
 
 ```bash
 npm run build
 npm run preview
 ```
 
-For the existing Lightsail/Nginx/Cloudflare host and `crtvd.vaell.dev`, follow
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Build locally and publish only `dist/`;
-no application server/database is required for CRTVD. Nginx examples, atomic
-release upload and rollback instructions are included.
+The deployable site is in `dist/`. A dedicated subdomain uses the default `BASE_PATH=/`;
+for hosting under a path, build and preview with the same `BASE_PATH` value.
 
-If hosting under a URL path instead of a dedicated subdomain, set the same
-`BASE_PATH=/CRTVD/` when building and previewing. Subdomain deployment uses `/`.
+### Use the native CLI or package
 
-## Licence and references
+After installing dependencies:
 
-Project source uses the [MIT licence](LICENSE). Dependencies retain their own
-licences; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+```bash
+npm run build:native
+./build/native-release/crtvd input.jpg output.png --width 160 --colours 16 --dither bayer
+```
 
-- [Algorithm notes](docs/ALGORITHMS.md)
-- [Animation implementation and limitations](docs/ANIMATION.md)
-- [The effect of CRTs on pixel art](https://datagubbe.se/crt/)
-- [GM Shaders: CRT](https://mini.gmshaders.com/p/gm-shaders-mini-crt)
-- [Touring the TRS-80's capabilities](https://bumbershootsoft.wordpress.com/2022/01/28/touring-the-trs-80s-capabilities/)
+Native compilation does not require Emscripten. A [CMake build](CMakeLists.txt) is also available.
+GIF and video codecs belong to the web application; the native CLI processes still images.
 
-The output prepares low-resolution assets for later use with a CRT display
-renderer. This version does not claim hardware-accurate CRT emulation.
+To build the TypeScript/Wasm package:
+
+```bash
+npm run build
+npm run pack:sdk
+```
+
+Install the resulting `release/vael2196-crtvd-0.3.0.tgz` in another project with `npm install`.
+See the [package README](packages/core/README.md) for browser, worker and Node examples, and the
+[API reference](docs/API.md) for options, limits, asset loading and memory ownership.
+
+## Quality and measurement
+
+[GitHub Actions](https://github.com/Vael2196/CRTVD/actions/workflows/check.yml) builds the native,
+Wasm and web targets, runs the complete suite, and uploads a `crtvd-release` artifact.
+
+| Checks                       | What they exercise                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| Native and Wasm engine tests | Resampling, colour reduction, dithering, alpha and bridge validation            |
+| SDK and CLI tests            | Input validation, buffer ownership, disposal, file I/O and overwrite protection |
+| Frozen reference images      | Native and Wasm output compared against reviewed PNG baselines                  |
+| Animation tests              | Shared palettes, GIF compositing and disposal, timing, encoding and limits      |
+| Playwright browser tests     | Real worker/Wasm conversion, exports, cancellation and desktop/mobile layouts   |
+| Package and build checks     | Installation outside the repository and fresh UI builds before browser tests    |
+
+Run the suite with the SDK active and a native C++20 compiler available:
+
+```bash
+npx playwright install chromium
+npm test
+```
+
+Reference images are not regenerated during tests. The [reference-image notes](tests/reference/README.md)
+describe the tolerance and review process. Browser tests currently target Chromium, including mobile
+emulation; they do not establish compatibility with every browser or physical device.
+
+The [benchmark report](benchmarks/RESULTS.md) includes raw runs, warm-ups, median/p95 timings,
+fixture hashes and toolchain metadata. It measures native processing and Wasm under Node on a
+shared Linux host, excluding codec I/O and browser rendering. It is a reproducible baseline,
+not a cross-device frame-rate promise.
+
+Reproduce it after building the native and Wasm targets with `npm run bench`.
+The deployed [benchmark page](https://crtvd.vaell.dev/benchmarks.html) presents the same baseline.
+
+## Deployment
+
+The live application is hosted at [crtvd.vaell.dev](https://crtvd.vaell.dev) on AWS Lightsail,
+with Nginx serving static files behind Cloudflare. Processing runs in the visitor's browser.
+
+The repository includes [HTTP and HTTPS Nginx examples](deploy) and a
+[static-release upload script](scripts/deploy-static.sh). GitHub Actions also produces the built
+site for artifact-based deployment. Server-specific operational notes are maintained separately
+from this public overview.
+
+## Feedback and contributions
+
+Found a bug or have an improvement in mind? [Open an issue](https://github.com/Vael2196/CRTVD/issues)
+with your browser and operating system, processing settings, and the expected and actual result.
+Include a small file that reproduces the problem if you are comfortable sharing it.
+
+For changes to processing algorithms, include tests and compare the affected reference images.
+Discuss larger features in an issue before opening a pull request.
+
+## Author and licence
+
+Built by [Vadim Filyakin](https://github.com/Vael2196).
+
+Project source is available under the [MIT licence](LICENSE). Dependencies retain their own
+licences; see [third-party notices](THIRD_PARTY_NOTICES.md). The [algorithm notes](docs/ALGORITHMS.md#reading)
+credit the colour-space and CRT references that inform the project.
