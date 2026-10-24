@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { engineFingerprint } from './engine-fingerprint.mjs';
+import { createHash } from 'node:crypto';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const compiler = process.env.EMXX || (process.platform === 'win32' ? 'em++.bat' : 'em++');
@@ -57,7 +59,7 @@ if (result.error) {
   console.error(
     'Emscripten was not found. Install the SDK and source emsdk_env.sh in this terminal.',
   );
-  console.error('See docs/GETTING_STARTED.md for the complete setup.');
+  console.error('See docs/API.md and README.md for the setup.');
   process.exit(1);
 }
 if (result.status !== 0) process.exit(result.status ?? 1);
@@ -70,6 +72,13 @@ const build = {
   version: JSON.parse(readFileSync(path.join(root, 'package.json'))).version,
   compiler: version.stdout.split('\n')[0],
   simd: false,
+  sourceSha256: engineFingerprint(),
+  loaderSha256: createHash('sha256')
+    .update(readFileSync(path.join(out, 'crtvd.js')))
+    .digest('hex'),
+  wasmSha256: createHash('sha256')
+    .update(readFileSync(path.join(out, 'crtvd.wasm')))
+    .digest('hex'),
 };
 writeFileSync(path.join(out, 'build.json'), JSON.stringify(build, null, 2) + '\n');
 console.log('Built web/public/wasm/crtvd.js and crtvd.wasm');

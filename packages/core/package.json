@@ -1,0 +1,33 @@
+{
+  "name": "@vael2196/crtvd",
+  "version": "0.3.0",
+  "description": "Reusable C++/WebAssembly palette reduction, resampling and dithering engine",
+  "type": "module",
+  "license": "MIT",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./wasm/crtvd.js": "./lib/wasm/crtvd.js",
+    "./wasm/crtvd.wasm": "./lib/wasm/crtvd.wasm",
+    "./wasm/build.json": "./lib/wasm/build.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vael2196/CRTVD.git",
+    "directory": "packages/core"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

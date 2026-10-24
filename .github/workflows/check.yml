@@ -2,6 +2,7 @@ name: Build and test
 on:
   push:
   pull_request:
+  workflow_dispatch:
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -16,12 +17,15 @@ jobs:
           version: '6.0.13'
           actions-cache-folder: emsdk-cache
       - run: npm ci
-      - run: npm run test:native
-      - run: npm run build
-      - run: npm run test:wasm
-      - run: npm run test:animation
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crtvd-release
+          path: |
+            dist/
+            release/
+            build/native-release/crtvd
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

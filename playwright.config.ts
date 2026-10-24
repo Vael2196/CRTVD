@@ -6,7 +6,7 @@ export default defineConfig({
   fullyParallel: false,
   timeout: 45_000,
   use: {
-    baseURL: process.env.TEST_BASE_URL || 'http://127.0.0.1:4173',
+    baseURL: process.env.TEST_BASE_URL || 'http://127.0.0.1:4197/',
     trace: 'retain-on-failure',
     launchOptions: process.env.CHROMIUM_EXECUTABLE_PATH
       ? {
@@ -22,9 +22,12 @@ export default defineConfig({
     },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
   ],
-  webServer: {
-    command: 'npm run preview -- --port 4173 --strictPort',
-    url: process.env.TEST_BASE_URL || 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: process.env.TEST_BASE_URL
+    ? undefined
+    : {
+        command: 'npm run preview -- --port 4197 --strictPort',
+        url: 'http://127.0.0.1:4197/',
+        reuseExistingServer: false,
+        env: { BASE_PATH: '/' },
+      },
 });

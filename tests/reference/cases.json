@@ -1,0 +1,38 @@
+[
+  {
+    "name": "adaptive-bayer",
+    "options": {
+      "width": 32,
+      "height": 21,
+      "palette": "adaptive",
+      "colours": 8,
+      "dither": "bayer",
+      "strength": 0.65,
+      "resample": "area"
+    }
+  },
+  {
+    "name": "monochrome-floyd",
+    "options": {
+      "width": 40,
+      "height": 27,
+      "palette": "monochrome",
+      "colours": 16,
+      "dither": "floyd",
+      "strength": 1,
+      "resample": "area"
+    }
+  },
+  {
+    "name": "handheld-nearest",
+    "options": {
+      "width": 48,
+      "height": 32,
+      "palette": "handheld",
+      "colours": 16,
+      "dither": "none",
+      "strength": 0.65,
+      "resample": "nearest"
+    }
+  }
+]

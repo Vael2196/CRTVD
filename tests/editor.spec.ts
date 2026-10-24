@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 async function ready(page: Page) {
-  await page.goto('/');
+  await page.goto('./');
   await expect(page.getByRole('button', { name: 'Export PNG' })).toBeEnabled({ timeout: 30_000 });
 }
 
@@ -22,13 +22,11 @@ async function uploadFixture(page: Page, width = 64, height = 32) {
     },
     { width, height },
   );
-  await page
-    .getByLabel('Upload image')
-    .setInputFiles({
-      name: 'fixture.png',
-      mimeType: 'image/png',
-      buffer: Buffer.from(fixture, 'base64'),
-    });
+  await page.getByLabel('Upload image').setInputFiles({
+    name: 'fixture.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(fixture, 'base64'),
+  });
   await expect(page.getByText('fixture.png', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export PNG' })).toBeEnabled();
 }

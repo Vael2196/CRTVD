@@ -5,3 +5,12 @@ web/public/wasm/
 test-results/
 playwright-report/
 package-lock.json
+engine/vendor/
+packages/core/lib/
+packages/core/LICENSE
+packages/core/THIRD_PARTY_NOTICES.md
+release/
+benchmarks/results/
+benchmarks/RESULTS.md
+web/public/benchmarks.html
+web/public/benchmarks.json

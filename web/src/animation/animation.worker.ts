@@ -1,4 +1,5 @@
-import type { AnimationModule, AnimationRequest, AnimationResponse, ClipSource } from './types';
+import { createProcessor } from '@vael2196/crtvd';
+import type { AnimationRequest, AnimationResponse, ClipSource } from './types';
 import { openClip } from './video';
 import { FrameProcessor, flattenFrame } from './processor';
 import { gifWriter, videoWriter } from './encode';
@@ -28,15 +29,12 @@ scope.onmessage = async ({ data }) => {
     const o = data.options;
     const { width, height } = animationSize(clip.info, o.settings.targetWidth);
     const url = new URL(`${import.meta.env.BASE_URL}wasm/crtvd.js`, scope.location.origin);
-    const { default: create } = await import(/* @vite-ignore */ url.href);
-    const module: AnimationModule = await create({
-      locateFile: (name: string) => new URL(name, url).href,
-    });
+    const engine = await createProcessor({ loaderUrl: url });
     const settings = {
       ...o.settings,
       colours: Math.min(o.settings.colours, o.format === 'gif' ? 255 : 256),
     };
-    processor = new FrameProcessor(module, width, height, settings);
+    processor = new FrameProcessor(engine, width, height, settings);
     // Negotiate the output before spending time on the palette pass.
     writer =
       o.format === 'gif'

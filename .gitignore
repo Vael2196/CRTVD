@@ -10,3 +10,7 @@ playwright-report/
 .DS_Store
 # Existing checkouts may retain ignored build outputs in the former nested tree.
 /crtvd/
+packages/core/lib/
+packages/core/LICENSE
+packages/core/THIRD_PARTY_NOTICES.md
+release/

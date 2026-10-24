@@ -52,31 +52,3 @@ export type WorkerResponse =
       milliseconds: number;
     }
   | { type: 'error'; message: string; generation?: number; id?: number };
-
-// This is the C API exported by Emscripten; numbers used as pointers are byte
-// offsets into the module's linear memory, not JavaScript object references.
-export interface CrtvdModule {
-  HEAPU8: Uint8Array;
-  _malloc(bytes: number): number;
-  _free(pointer: number): void;
-  _crtvd_process(
-    pointer: number,
-    length: number,
-    iw: number,
-    ih: number,
-    ow: number,
-    oh: number,
-    palette: number,
-    colours: number,
-    dither: number,
-    strength: number,
-    resample: number,
-  ): number;
-  _crtvd_last_error(): number;
-  UTF8ToString(pointer: number): string;
-  _crtvd_result_pixels(result: number): number;
-  _crtvd_result_length(result: number): number;
-  _crtvd_result_palette(result: number): number;
-  _crtvd_result_palette_length(result: number): number;
-  _crtvd_result_free(result: number): void;
-}

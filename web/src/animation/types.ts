@@ -1,4 +1,4 @@
-import type { Settings, CrtvdModule } from '../types';
+import type { Settings } from '../types';
 
 export type AnimationFormat = 'gif' | 'webm' | 'mp4';
 export interface AnimationOptions {
@@ -46,35 +46,3 @@ export type AnimationResponse =
       palette: number[];
     }
   | { type: 'error'; message: string };
-
-export interface AnimationModule extends CrtvdModule {
-  _crtvd_process_palette(
-    pointer: number,
-    length: number,
-    iw: number,
-    ih: number,
-    ow: number,
-    oh: number,
-    palette: number,
-    colours: number,
-    dither: number,
-    strength: number,
-    resample: number,
-    palettePointer: number,
-    paletteLength: number,
-  ): number;
-  _crtvd_palette_create(): number;
-  _crtvd_palette_add(
-    trainer: number,
-    pointer: number,
-    length: number,
-    iw: number,
-    ih: number,
-    ow: number,
-    oh: number,
-    resample: number,
-    seconds: number,
-  ): number;
-  _crtvd_palette_finish(trainer: number, colours: number): number;
-  _crtvd_palette_free(trainer: number): void;
-}

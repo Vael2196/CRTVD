@@ -4,7 +4,7 @@
 visual assets. Its reusable C++20 engine runs in the browser through WebAssembly.
 The React interface handles still-image previews, animation jobs and local export.
 
-**Version 0.2: still images + animation.** No uploads, accounts or backend service
+**Version 0.3: reusable engine, native CLI and a refreshed early-web interface.** No uploads, accounts or backend service
 are required. CRT display simulation is a separate future stage.
 
 ## Features
@@ -37,6 +37,32 @@ Open the local URL printed by Vite. Start with **Still image**, or choose
 
 Emscripten setup and upgrade commands are in
 [docs/UPGRADING_0_2.md](docs/UPGRADING_0_2.md).
+For this release's patch, test fix and package commands, see
+[docs/UPGRADING_0_3.md](docs/UPGRADING_0_3.md).
+
+## Reusable release
+
+- `@vael2196/crtvd`: framework-independent ESM/TypeScript package with matching
+  Wasm assets, caller-owned output buffers and clip palette training.
+- Native `crtvd` CLI: PNG/JPEG to palette-limited PNG, optional palette/report
+  files, built from the same C++ engine.
+- Frozen reference PNGs checked through both native and Wasm paths.
+- [Measured benchmarks](benchmarks/RESULTS.md), raw runs and a static public
+  report at `/benchmarks.html` after deployment.
+- Automatic fresh UI builds and an isolated server for Playwright, fixing tests
+  that previously served an old `dist` without the Animation navigation.
+
+```bash
+npm run build:native
+./build/native-release/crtvd input.jpg output.png --width 160 --colours 16
+npm run pack:sdk
+```
+
+Install the tarball in `release/` into another project. This local package route
+needs no registry account. Full usage and lifecycle rules: [docs/API.md](docs/API.md).
+The native CLI is currently a still-image tool; GIF/video codecs remain in the
+web app. Benchmark values are measured on a shared Linux host, not guarantees
+for a visitor's browser.
 
 ## Supported animation profiles
 
@@ -116,35 +142,51 @@ skip the analysis pass. Read [docs/ANIMATION.md](docs/ANIMATION.md) for details.
 ## Build, test and deploy
 
 ```bash
-npm run test:native
-npm run build
-npm run test:wasm
-npm run test:animation
+npm ci
+source ~/tools/emsdk/emsdk_env.sh
 npx playwright install chromium
+npm test
+```
+
+The complete suite builds the native CLI and Wasm/web release, checks reference
+images and package installation, then runs browser tests. Individual commands:
+
+```bash
+npm run build
+npm run build:native
+npm run test:native
+npm run test:wasm
+npm run test:sdk
+npm run test:cli
+npm run test:references
+npm run test:animation
+npm run pack:sdk
+npm run test:package
 npm run test:e2e
 ```
 
-The native tests require `g++` or a C++20 compiler selected with `CXX`. Browser
-tests run against the production `dist/` build. `npm test` runs all test groups
-after the Wasm and web build exists.
+`test:e2e` rebuilds the UI every time, serves it on a dedicated port (4197) and
+refuses to reuse an existing process. A stale Wasm build fails early with the
+rebuild command. Use `TEST_BASE_URL` only when intentionally testing an external
+site; that mode skips local build/server management.
+
+Frozen references are never updated during tests. Maintainers can review and
+regenerate them explicitly using `npm run references:update` after a native
+build. Significant RGB differences are limited to 0.5% of pixels (ignoring
+channel deltas up to 2), with exact alpha. See tests/reference/README.md.
 
 ```bash
 npm run build
 npm run preview
 ```
 
-Publish `dist/` to a static host. Use HTTPS in production. When hosting at
-`https://example.com/CRTVD/`, set the matching base path for build and preview:
+For the existing Lightsail/Nginx/Cloudflare host and `crtvd.vaell.dev`, follow
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Build locally and publish only `dist/`;
+no application server/database is required for CRTVD. Nginx examples, atomic
+release upload and rollback instructions are included.
 
-```bash
-BASE_PATH=/CRTVD/ npm run build
-BASE_PATH=/CRTVD/ npm run preview
-```
-
-Both workers find their generated Wasm loader under that prefix. Rebuild and
-deploy the `.js` / `.wasm` engine pair together; revalidate their cache entries
-when deploying a new engine. This release uses one Wasm instance per worker,
-without SharedArrayBuffer or cross-origin-isolation requirements.
+If hosting under a URL path instead of a dedicated subdomain, set the same
+`BASE_PATH=/CRTVD/` when building and previewing. Subdomain deployment uses `/`.
 
 ## Licence and references
 

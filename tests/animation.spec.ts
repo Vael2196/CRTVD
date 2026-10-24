@@ -6,7 +6,11 @@ import { fixtureGif } from './gif-fixtures';
 import { Input, BufferSource, WEBM, MP4 } from 'mediabunny';
 
 async function editor(page: Page) {
-  await page.goto('/');
+  await page.goto('./');
+  await expect(
+    page.getByRole('button', { name: 'Animation', exact: true }),
+    'Animation navigation missing: check the served build and TEST_BASE_URL',
+  ).toBeVisible({ timeout: 8000 });
   await page.getByRole('button', { name: 'Animation', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Give every frame');
 }

@@ -1,0 +1,11 @@
+{
+  "version": "0.3.0",
+  "inputSha256": "555caf703f576aaa43c5bc227d7c0a9dab1463df7569283fbae4a1c31714488b",
+  "origin": "Frozen native C++ baseline; inspect PNGs before committing an update.",
+  "tolerance": {
+    "rgbDifferentPixelsFraction": 0.005,
+    "ignoredChannelDelta": 2,
+    "alphaDelta": 0
+  },
+  "cases": ["adaptive-bayer", "monochrome-floyd", "handheld-nearest"]
+}

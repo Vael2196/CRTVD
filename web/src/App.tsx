@@ -507,8 +507,14 @@ function StillImageEditor() {
         <span>
           CRTVD <span className="footer-dot">/</span> CRT Visual Downscaler
         </span>
-        <span>Made for the beauty between the pixels.</span>
-        <span>Still images · v0.2</span>
+        <span className="footer-badges">
+          <b>LOCAL FILES</b>
+          <b>WASM INSIDE</b>
+          <b>PNG / GIF / VIDEO</b>
+        </span>
+        <span>
+          <a href={`${import.meta.env.BASE_URL}benchmarks.html`}>Benchmarks</a> · v0.3
+        </span>
       </footer>
     </main>
   );

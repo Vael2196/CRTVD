@@ -1,26 +1,41 @@
 {
   "name": "crtvd",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "packages/core"
+  ],
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
     "build:wasm": "node scripts/build-wasm.mjs",
+    "predev": "npm run build:sdk",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "build:web": "npm run typecheck && vite build",
+    "build:sdk": "node scripts/build-sdk.mjs",
+    "build:web": "npm run build:sdk && npm run typecheck && vite build",
     "build": "npm run build:wasm && npm run build:web",
     "preview": "vite preview --host 127.0.0.1",
     "test:native": "node scripts/test-native.mjs",
     "test:wasm": "node tests/wasm.test.mjs",
     "test:animation": "node --import tsx --test tests/animation.test.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "build:native": "node scripts/build-native.mjs",
+    "pack:sdk": "node scripts/pack-sdk.mjs",
+    "test:sdk": "node --test tests/sdk.test.mjs",
+    "test:cli": "node --test tests/cli.test.mjs",
+    "test:references": "node tests/reference.test.mjs",
+    "test:package": "node --test tests/package.test.mjs",
+    "test:e2e:freshness": "node --test tests/e2e-build.test.mjs",
+    "references:update": "node scripts/update-references.mjs",
+    "bench": "node benchmarks/run.mjs",
     "format": "prettier --write .",
-    "test": "npm run test:native && npm run test:wasm && npm run test:animation && npm run test:e2e"
+    "test": "npm run build:native && npm run build && npm run test:native && npm run test:wasm && npm run test:sdk && npm run test:cli && npm run test:references && npm run test:animation && npm run pack:sdk && npm run test:package && npm run test:e2e:freshness && npm run test:e2e"
   },
   "dependencies": {
+    "@vael2196/crtvd": "file:packages/core",
     "gifenc": "1.0.3",
     "gifuct-js": "2.1.2",
     "mediabunny": "1.62.1",
@@ -30,9 +45,11 @@
   "devDependencies": {
     "@playwright/test": "1.64.1",
     "@types/node": "^22.19.0",
+    "@types/pngjs": "6.0.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "6.1.2",
+    "pngjs": "7.0.0",
     "prettier": "3.9.10",
     "tsx": "4.23.15",
     "typescript": "7.0.2",

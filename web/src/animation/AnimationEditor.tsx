@@ -496,8 +496,14 @@ export function AnimationEditor() {
       </section>
       <footer>
         <span>CRTVD / CRT Visual Downscaler</span>
-        <span>One palette. Every frame.</span>
-        <span>Animation · v0.2</span>
+        <span className="footer-badges">
+          <b>LOCAL FILES</b>
+          <b>WASM INSIDE</b>
+          <b>ONE PALETTE</b>
+        </span>
+        <span>
+          <a href={`${import.meta.env.BASE_URL}benchmarks.html`}>Benchmarks</a> · v0.3
+        </span>
       </footer>
     </main>
   );

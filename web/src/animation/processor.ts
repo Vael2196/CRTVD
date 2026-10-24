@@ -1,115 +1,43 @@
-import type { AnimationModule, ClipFrame } from './types';
+import type { Processor, PaletteTrainer } from '@vael2196/crtvd';
+import type { ClipFrame } from './types';
 import type { Settings } from '../types';
 
 export class FrameProcessor {
-  private pointer = 0;
-  private capacity = 0;
-  private palettePointer = 0;
-  private paletteLength = 0;
-  private trainer = 0;
+  private trainer: PaletteTrainer | undefined;
+  private palette: Uint8Array | undefined;
   constructor(
-    private module: AnimationModule,
+    private engine: Processor,
     private width: number,
     private height: number,
     private settings: Settings,
-  ) {
-    if (typeof module._crtvd_palette_create !== 'function')
-      throw new Error('The Wasm engine is from an older build. Run npm run build:wasm and reload.');
-  }
-  private input(frame: ClipFrame) {
-    if (frame.rgba.byteLength > this.capacity) {
-      if (this.pointer) this.module._free(this.pointer);
-      this.pointer = 0;
-      this.capacity = 0;
-      this.pointer = this.module._malloc(frame.rgba.byteLength);
-      if (!this.pointer) throw new Error('Not enough memory to process this animation.');
-      this.capacity = frame.rgba.byteLength;
-    }
-    this.module.HEAPU8.set(frame.rgba, this.pointer);
-  }
-  private error() {
-    return new Error(this.module.UTF8ToString(this.module._crtvd_last_error()));
+  ) {}
+  private options() {
+    return { ...this.settings, width: this.width, height: this.height };
   }
   train(frame: ClipFrame) {
-    if (!this.trainer) {
-      this.trainer = this.module._crtvd_palette_create();
-      if (!this.trainer) throw this.error();
-    }
-    this.input(frame);
-    const ok = this.module._crtvd_palette_add(
-      this.trainer,
-      this.pointer,
-      frame.rgba.byteLength,
-      frame.width,
-      frame.height,
-      this.width,
-      this.height,
-      this.settings.resample === 'area' ? 0 : 1,
+    this.trainer ??= this.engine.createPaletteTrainer(this.options());
+    this.trainer.addFrame(
+      { data: frame.rgba, width: frame.width, height: frame.height },
       frame.duration,
     );
-    if (!ok) throw this.error();
   }
   finishTraining(colours: number) {
-    const result = this.module._crtvd_palette_finish(this.trainer, colours);
-    if (!result) throw this.error();
-    try {
-      const pointer = this.module._crtvd_result_palette(result),
-        length = this.module._crtvd_result_palette_length(result);
-      this.setPalette(this.module.HEAPU8.slice(pointer, pointer + length));
-    } finally {
-      this.module._crtvd_result_free(result);
-    }
-    this.module._crtvd_palette_free(this.trainer);
-    this.trainer = 0;
-  }
-  private setPalette(palette: Uint8Array) {
-    if (this.palettePointer) this.module._free(this.palettePointer);
-    this.palettePointer = this.module._malloc(palette.length);
-    if (!this.palettePointer) throw new Error('Palette allocation failed.');
-    this.module.HEAPU8.set(palette, this.palettePointer);
-    this.paletteLength = palette.length;
+    if (!this.trainer) throw new Error('No palette training frames');
+    this.palette = this.trainer.finish(colours);
+    this.trainer.dispose();
+    this.trainer = undefined;
   }
   process(frame: ClipFrame) {
-    this.input(frame);
-    const s = this.settings;
-    const result = this.module._crtvd_process_palette(
-      this.pointer,
-      frame.rgba.byteLength,
-      frame.width,
-      frame.height,
-      this.width,
-      this.height,
-      { adaptive: 0, monochrome: 1, handheld: 2, cga: 3 }[s.palette],
-      s.colours,
-      { none: 0, bayer: 1, floyd: 2 }[s.dither],
-      s.strength,
-      s.resample === 'area' ? 0 : 1,
-      this.palettePointer,
-      this.paletteLength,
+    const result = this.engine.processFrame(
+      { data: frame.rgba, width: frame.width, height: frame.height },
+      { ...this.options(), customPalette: this.palette },
     );
-    if (!result) throw this.error();
-    try {
-      const p = this.module._crtvd_result_pixels(result),
-        n = this.module._crtvd_result_length(result);
-      const pp = this.module._crtvd_result_palette(result),
-        pn = this.module._crtvd_result_palette_length(result);
-      return {
-        rgba: this.module.HEAPU8.slice(p, p + n),
-        palette: this.module.HEAPU8.slice(pp, pp + pn),
-      };
-    } finally {
-      this.module._crtvd_result_free(result);
-    }
+    return { rgba: result.data, palette: result.palette };
   }
   dispose() {
-    if (this.pointer) this.module._free(this.pointer);
-    if (this.palettePointer) this.module._free(this.palettePointer);
-    if (this.trainer) this.module._crtvd_palette_free(this.trainer);
-    this.pointer = 0;
-    this.palettePointer = 0;
-    this.trainer = 0;
-    this.capacity = 0;
-    this.paletteLength = 0;
+    this.trainer?.dispose();
+    this.trainer = undefined;
+    this.engine.dispose();
   }
 }
 

@@ -46,3 +46,11 @@ https://registry.npmjs.org/mediabunny/-/mediabunny-1.62.1.tgz
 
 The full MPL 2.0 text is distributed in `web/public/notices/mediabunny-MPL-2.0.txt`.
 Third-party components remain under their respective licences.
+
+## Native CLI image codecs
+
+The native image-I/O layer uses unmodified stb_image and stb_image_write,
+from nothings/stb revision 003501f6d7a8668ce8b6d875e34dd97ad0d5d5b5.
+The project uses the MIT licence option provided by those headers. Their full
+licence and source checksums are in engine/vendor/. These headers are not
+compiled into the browser engine or the TypeScript package.
