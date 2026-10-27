@@ -116,47 +116,6 @@ Registry publication is separate from the repository's release build.
 Read the [algorithm notes](docs/ALGORITHMS.md), [animation design](docs/ANIMATION.md) and
 [public API](docs/API.md) for implementation details and trade-offs.
 
-## Run locally
-
-Requirements: **Node.js 22.12+** (24 recommended), **Python 3**, Git and
-**Emscripten 6.0.13**. A native C++20 compiler is also needed for the CLI and full test suite.
-
-Install Emscripten using its [official SDK instructions](https://emscripten.org/docs/getting_started/downloads.html).
-For a new SDK installation, select the project's pinned version:
-
-```bash
-git clone https://github.com/emscripten-core/emsdk.git ~/tools/emsdk
-cd ~/tools/emsdk
-./emsdk install 6.0.13
-./emsdk activate 6.0.13
-source ./emsdk_env.sh
-```
-
-Clone and start CRTVD:
-
-```bash
-git clone https://github.com/Vael2196/CRTVD.git
-cd CRTVD
-
-source ~/tools/emsdk/emsdk_env.sh
-npm ci
-npm run build:wasm
-npm run dev
-```
-
-Open the local URL printed by Vite. Source `emsdk_env.sh` again when building from a new terminal;
-use your actual SDK path if it differs.
-
-For a production build and local preview:
-
-```bash
-npm run build
-npm run preview
-```
-
-The deployable site is in `dist/`. A dedicated subdomain uses the default `BASE_PATH=/`;
-for hosting under a path, build and preview with the same `BASE_PATH` value.
-
 ### Use the native CLI or package
 
 After installing dependencies:
