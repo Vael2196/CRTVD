@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,7 +17,9 @@ jobs:
           version: '6.0.13'
           actions-cache-folder: emsdk-cache
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Use the hosted image's Chromium system libraries; install Playwright's pinned browser.
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
       - run: npm test
       - uses: actions/upload-artifact@v4
         with:
