@@ -1,3 +1,6 @@
+import type { PaletteEdit } from './palettes';
+import type { Effects } from './effects';
+
 export type PaletteMode = 'adaptive' | 'monochrome' | 'handheld' | 'cga';
 export type Dither = 'none' | 'bayer' | 'floyd';
 export type Resample = 'area' | 'nearest';
@@ -9,6 +12,10 @@ export interface Settings {
   dither: Dither;
   strength: number;
   resample: Resample;
+  customPalette?: number[];
+  importedPalette?: number[];
+  paletteEdit?: PaletteEdit;
+  effects?: Effects;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,6 +56,7 @@ export type WorkerResponse =
       height: number;
       rgba: ArrayBuffer;
       palette: number[];
+      originalPalette: number[];
       milliseconds: number;
     }
   | { type: 'error'; message: string; generation?: number; id?: number };

@@ -41,25 +41,32 @@ media upload or account required.
   diffusion, or no dithering, with adjustable strength.
 - **Animations with one palette per clip.** Adaptive mode learns a palette from the whole animation,
   weighted by each frame's display duration, then reuses it for every frame.
+- **Editable, shareable palettes.** Replace a swatch without changing the dither pattern, try
+  Soft Club and retro console presets, or copy a palette code between projects.
+- **Source blends and lens effects.** Drag either end of a split to blend the source and
+  conversion. Add chromatic aberration or purple fringing to stills and animations.
 - **Useful exports.** Save transparent PNGs at their processing size or an integer pixel scale.
   Export animations as GIF, WebM or MP4 where the browser supports the required codecs.
 - **An interface with an earlier-web feel.** Bevelled panels, blue title bars, a tiled navy
   background and live previews, with progress reporting and cancellation for animation jobs.
 
 CRTVD prepares assets for retro-inspired games, interfaces and later CRT rendering. Its current
-effects are resolution reduction, palette quantisation and dithering; scanlines, phosphor masks,
-screen curvature and hardware-accurate CRT simulation are outside this release.
+effects include resolution reduction, palette quantisation, dithering and compositing. Scanlines,
+phosphor masks and screen curvature are outside this release.
 
 ## Try it
 
 1. Open [CRTVD](https://crtvd.vaell.dev) and choose **Still image** or **Animation**.
 2. Use the built-in sample or select a supported file from your device.
-3. Set the output width, palette and dithering. For still images, compare the original and result
-   in the split preview.
-4. Download the PNG, or select an animation format and run the conversion.
+3. Set the output width, palette and dithering. Choose a swatch under the result to change
+   its colour or open **Advanced settings** to blend with the source.
+4. Download the PNG, or select an animation format and run the conversion. Use **Preview first
+   frame** to try animation effects before encoding the clip.
 
 For a quick starting point, try **Soft dusk** for an adaptive palette, **Paper & ink** for
-monochrome, or **Pocket green** for a handheld-inspired still image.
+monochrome, **Pocket green** for a handheld-inspired still, or **Cross Section** for a cool
+blue and olive Gen-X Soft Club look. See the [palette and effects guide](docs/CREATIVE_TOOLS.md)
+for the share-code format and blending options.
 
 ## Formats and current scope
 
@@ -150,6 +157,7 @@ Wasm and web targets, runs the complete suite, and uploads a `crtvd-release` art
 | SDK and CLI tests            | Input validation, buffer ownership, disposal, file I/O and overwrite protection |
 | Frozen reference images      | Native and Wasm output compared against reviewed PNG baselines                  |
 | Animation tests              | Shared palettes, GIF compositing and disposal, timing, encoding and limits      |
+| Creative tools tests         | Palette codes, exact colour replacement, alpha, blends and lens effects         |
 | Playwright browser tests     | Real worker/Wasm conversion, exports, cancellation and desktop/mobile layouts   |
 | Package and build checks     | Installation outside the repository and fresh UI builds before browser tests    |
 

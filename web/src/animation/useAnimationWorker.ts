@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AnimationRequest, AnimationResponse } from './types';
 
-type Answer = Extract<AnimationResponse, { type: 'info' | 'done' }>;
+type Answer = Extract<AnimationResponse, { type: 'info' | 'done' | 'preview' }>;
 export function useAnimationWorker() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<Extract<AnimationResponse, { type: 'progress' }> | null>(
@@ -54,7 +54,7 @@ export function useAnimationWorker() {
           else if (answer) resolve(answer);
         };
         current.current = { worker, reject };
-        if (request.type === 'probe')
+        if (request.type !== 'convert')
           current.current.timer = setTimeout(
             () =>
               finish(

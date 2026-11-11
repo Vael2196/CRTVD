@@ -32,7 +32,8 @@
     "references:update": "node scripts/update-references.mjs",
     "bench": "node benchmarks/run.mjs",
     "format": "prettier --write .",
-    "test": "npm run build:native && npm run build && npm run test:native && npm run test:wasm && npm run test:sdk && npm run test:cli && npm run test:references && npm run test:animation && npm run pack:sdk && npm run test:package && npm run test:e2e:freshness && npm run test:e2e"
+    "test": "npm run build:native && npm run build && npm run test:native && npm run test:wasm && npm run test:sdk && npm run test:cli && npm run test:references && npm run test:animation && npm run test:creative && npm run pack:sdk && npm run test:package && npm run test:e2e:freshness && npm run test:e2e",
+    "test:creative": "node --import tsx --test tests/creative.test.ts"
   },
   "dependencies": {
     "@vael2196/crtvd": "file:packages/core",

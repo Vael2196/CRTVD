@@ -7,7 +7,15 @@ import { animationSize, LIMITS } from './limits';
 import { useAnimationWorker } from './useAnimationWorker';
 import { makeDemoGif } from './demo';
 import { snapshotFile, isCancelled } from '../uploads';
+import { AdvancedSettings, BlendHandles } from '../AdvancedTools';
+import { PalettePanel, PresetGallery } from '../PaletteTools';
+import { clearPaletteChanges, editSwatch } from '../palettes';
+import { DEFAULT_EFFECTS, effectEnabled } from '../effects';
 
+type FirstFrame = Extract<AnimationResponse, { type: 'preview' }>;
+type PaletteReference = Pick<FirstFrame, 'palette' | 'originalPalette'> & { key: string };
+const paletteKey = ({ settings: s, format, fps, matte }: AnimationOptions) =>
+  JSON.stringify([s.palette, s.colours, s.resample, s.targetWidth, format, fps, matte]);
 type Converted = Extract<AnimationResponse, { type: 'done' }> & { url: string; filename: string };
 const defaults: AnimationOptions = {
   settings: { ...DEFAULT_SETTINGS },
@@ -20,6 +28,20 @@ export function AnimationEditor() {
   const [source, setSource] = useState<{ file: File; info: ClipInfo; url: string } | null>(null);
   const [options, setOptions] = useState<AnimationOptions>(defaults);
   const [output, setOutput] = useState<Converted | null>(null);
+  const [firstFrame, setFirstFrame] = useState<FirstFrame | null>(null);
+  const [paletteReference, setPaletteReference] = useState<PaletteReference | null>(null);
+  const learnedPalette = useRef<{ key: string; colours: number[] } | null>(null);
+  const previewCanvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!firstFrame || !previewCanvas.current) return;
+    previewCanvas.current
+      .getContext('2d')!
+      .putImageData(
+        new ImageData(new Uint8ClampedArray(firstFrame.rgba), firstFrame.width, firstFrame.height),
+        0,
+        0,
+      );
+  }, [firstFrame]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -42,11 +64,24 @@ export function AnimationEditor() {
   const edit = (update: Partial<AnimationOptions>) => {
     setOptions((o) => ({ ...o, ...update }));
     setOutput(null);
+    setFirstFrame(null);
     setError('');
   };
   const setting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
-    setOptions((o) => ({ ...o, settings: { ...o.settings, [key]: value } }));
+    if (key === 'palette') setPaletteReference(null);
+    setOptions((o) => ({
+      ...o,
+      settings:
+        key === 'palette'
+          ? {
+              ...clearPaletteChanges(o.settings),
+              palette: value as Settings['palette'],
+              customPalette: undefined,
+            }
+          : { ...o.settings, [key]: value },
+    }));
     setOutput(null);
+    setFirstFrame(null);
     setError('');
   };
   const load = async (file?: File) => {
@@ -59,6 +94,9 @@ export function AnimationEditor() {
     setLoading(true);
     setError('');
     setOutput(null);
+    setFirstFrame(null);
+    setPaletteReference(null);
+    learnedPalette.current = null;
     try {
       const owned = await snapshotFile(file, 'animation', controller.signal);
       if (id !== loadId.current) return;
@@ -86,13 +124,37 @@ export function AnimationEditor() {
     e.preventDefault();
     void load(e.dataTransfer.files[0]);
   };
-  const convert = async () => {
+  const convert = async (next = options, previewOnly = false) => {
     if (!source) return;
     setOutput(null);
     setError('');
     try {
-      const answer = await run({ type: 'convert', file: source.file, options });
-      if (answer.type !== 'done') return;
+      const key = paletteKey(next);
+      const request = { file: source.file, options: next };
+      const learned = learnedPalette.current;
+      const answer = await run(
+        previewOnly
+          ? {
+              ...request,
+              type: 'preview',
+              trainedPalette: learned?.key === key ? learned.colours : undefined,
+            }
+          : { ...request, type: 'convert' },
+      );
+      if (answer.type === 'info') return;
+      setPaletteReference({
+        key,
+        palette: answer.palette,
+        originalPalette: answer.originalPalette,
+      });
+      if (answer.type === 'preview') {
+        setFirstFrame(answer);
+        return;
+      }
+      const s = next.settings;
+      if (s.palette === 'adaptive' && !s.paletteEdit && !s.importedPalette && !s.customPalette)
+        learnedPalette.current = { key, colours: answer.originalPalette };
+      setFirstFrame(null);
       const url = URL.createObjectURL(new Blob([answer.bytes], { type: answer.mime }));
       const stem = source.file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]+/g, '-');
       setOutput({
@@ -120,6 +182,25 @@ export function AnimationEditor() {
     ? animationSize(source.info, LIMITS.outputWidth).width
     : LIMITS.outputWidth;
   const s = options.settings;
+  const effects = s.effects ?? DEFAULT_EFFECTS;
+  const hasOverrides = !!(s.paletteEdit || s.importedPalette || s.customPalette);
+  const reference = paletteReference?.key === paletteKey(options) ? paletteReference : null;
+  const palette =
+    s.paletteEdit?.colours ?? s.importedPalette ?? s.customPalette ?? reference?.palette ?? [];
+  const applyPalette = (settings: Settings) => {
+    const next = { ...options, settings };
+    setOptions(next);
+    setPaletteReference(null);
+    setError('');
+    if (output) void convert(next);
+    else if (firstFrame) void convert(next, true);
+  };
+  const stageLabel =
+    progress?.phase === 'palette'
+      ? 'Learning palette'
+      : progress?.phase === 'effects'
+        ? 'Learning blend colours'
+        : 'Encoding frames';
   const percent = progress ? Math.min(100, Math.round(progress.fraction * 100)) : 0;
 
   return (
@@ -156,6 +237,8 @@ export function AnimationEditor() {
               onClick={() => {
                 setOptions({ ...defaults, settings: { ...DEFAULT_SETTINGS } });
                 setOutput(null);
+                setFirstFrame(null);
+                setPaletteReference(null);
                 setError('');
               }}
             >
@@ -232,15 +315,20 @@ export function AnimationEditor() {
               <label htmlFor="animation-palette">Colour palette</label>
               <select
                 id="animation-palette"
-                value={s.palette}
+                value={hasOverrides ? 'custom' : s.palette}
                 onChange={(e) => setting('palette', e.target.value as Settings['palette'])}
               >
                 <option value="adaptive">Adaptive · shared across clip</option>
+                {hasOverrides && (
+                  <option value="custom" disabled>
+                    Custom · current swatches
+                  </option>
+                )}
                 <option value="monochrome">Paper & ink · black and white</option>
                 <option value="handheld">Pocket green · 4 colours</option>
                 <option value="cga">Electric four · cyan and magenta</option>
               </select>
-              {s.palette === 'adaptive' && (
+              {s.palette === 'adaptive' && !hasOverrides && (
                 <div className="colour-control">
                   <label htmlFor="animation-colours">Maximum colours</label>
                   <select
@@ -339,6 +427,11 @@ export function AnimationEditor() {
               </div>
             )}
           </fieldset>
+          <AdvancedSettings
+            effects={effects}
+            disabled={busy || loading}
+            change={(next) => setting('effects', next)}
+          />
         </aside>
         <div className="preview-panel animation-preview">
           <div className="preview-toolbar">
@@ -348,9 +441,7 @@ export function AnimationEditor() {
               {busy || loading
                 ? loading
                   ? 'Reading clip'
-                  : progress?.phase === 'palette'
-                    ? 'Learning the palette'
-                    : 'Converting frames'
+                  : stageLabel
                 : output
                   ? 'Conversion complete'
                   : source
@@ -362,18 +453,33 @@ export function AnimationEditor() {
             <figure>
               <figcaption>ORIGINAL</figcaption>
               {source ? (
-                source.info.kind === 'gif' ? (
-                  <img src={source.url} alt="Original animation" />
-                ) : (
-                  <video
-                    src={source.url}
-                    aria-label="Original video"
-                    controls
-                    muted
-                    playsInline
-                    loop
-                  />
-                )
+                <div
+                  className="clip-source-frame"
+                  style={{
+                    aspectRatio: `${source.info.width} / ${source.info.height}`,
+                    maxWidth: `min(100%, ${(420 * source.info.width) / source.info.height}px)`,
+                  }}
+                >
+                  {source.info.kind === 'gif' ? (
+                    <img src={source.url} alt="Original animation" />
+                  ) : (
+                    <video
+                      src={source.url}
+                      aria-label="Original video"
+                      controls
+                      muted
+                      playsInline
+                      loop
+                    />
+                  )}
+                  {effects.blend !== 'off' && (
+                    <BlendHandles
+                      effects={effects}
+                      disabled={busy || loading}
+                      change={(next) => setting('effects', next)}
+                    />
+                  )}
+                </div>
               ) : (
                 <div className="animation-placeholder">
                   Start with a GIF or short video,
@@ -383,7 +489,7 @@ export function AnimationEditor() {
               )}
             </figure>
             <figure>
-              <figcaption>CONVERTED</figcaption>
+              <figcaption>{firstFrame && !output ? 'FIRST FRAME PREVIEW' : 'CONVERTED'}</figcaption>
               {output ? (
                 output.extension === 'gif' ? (
                   <img src={output.url} alt="Converted animation" />
@@ -397,6 +503,14 @@ export function AnimationEditor() {
                     loop
                   />
                 )
+              ) : firstFrame ? (
+                <canvas
+                  ref={previewCanvas}
+                  className="clip-preview-canvas"
+                  aria-label="Converted first frame"
+                  width={firstFrame.width}
+                  height={firstFrame.height}
+                />
               ) : (
                 <div className="animation-placeholder">
                   {busy && !loading
@@ -428,7 +542,9 @@ export function AnimationEditor() {
                 : 'Audio is omitted from exported assets.'}
             </p>
             <p>
-              GIF keeps exact palette colours; lossy video encoding may introduce nearby colours.
+              {effectEnabled(effects) && options.format === 'gif'
+                ? 'GIF adds shared blend colours where space allows, then maps the composite to its 255-colour limit.'
+                : 'GIF keeps exact palette colours; lossy video encoding may introduce nearby colours.'}{' '}
               Previews play independently.
             </p>
             {options.format === 'gif' && (
@@ -454,29 +570,42 @@ export function AnimationEditor() {
               <label htmlFor="conversion-progress">
                 {loading
                   ? 'Reading the clip'
-                  : `${progress?.phase === 'palette' ? 'Learning palette' : 'Encoding frames'} · ${percent}%${progress ? ` · frame ${progress.frame}` : ''}`}
+                  : `${stageLabel} · ${percent}%${progress ? ` · frame ${progress.frame}` : ''}`}
               </label>
               <progress id="conversion-progress" value={percent} max="100" />
             </div>
           )}
+          <PalettePanel
+            colours={palette}
+            max={options.format === 'gif' ? 255 : 256}
+            altered={!!(s.paletteEdit || s.importedPalette)}
+            disabled={busy || loading}
+            onEdit={(index, rgb) =>
+              applyPalette(
+                editSwatch(
+                  s,
+                  s.importedPalette ?? s.customPalette ?? reference?.originalPalette ?? palette,
+                  index,
+                  rgb,
+                ),
+              )
+            }
+            onDefault={() => applyPalette(clearPaletteChanges(s))}
+            onImport={(colours) =>
+              applyPalette({ ...s, importedPalette: colours, paletteEdit: undefined })
+            }
+          />
+          {firstFrame && (
+            <p className="field-note preview-note">
+              First frame only. Before the full clip is analysed, an adaptive preview estimates its
+              palette from this frame. GIF may simplify blend colours during export.
+            </p>
+          )}
           {output && (
-            <div className="palette-panel">
-              <div className="palette-heading">
-                <span>SHARED CLIP PALETTE</span>
-                <span>{output.palette.length / 3} RGB colours</span>
-              </div>
-              <div className="swatches">
-                {Array.from({ length: output.palette.length / 3 }, (_, i) => {
-                  const rgb = output.palette.slice(i * 3, i * 3 + 3);
-                  const colour = `rgb(${rgb.join(',')})`;
-                  return <span key={i} style={{ background: colour }} title={colour} />;
-                })}
-              </div>
-              <p>
-                {output.width} × {output.height} · {output.frames} frames ·{' '}
-                {output.duration.toFixed(2)} s · {(output.bytes.byteLength / 1024).toFixed(1)} KiB
-              </p>
-            </div>
+            <p className="field-note preview-note">
+              {output.width} × {output.height} · {output.frames} frames ·{' '}
+              {output.duration.toFixed(2)} s · {(output.bytes.byteLength / 1024).toFixed(1)} KiB
+            </p>
           )}
           <div className="export-bar animation-actions">
             <div>
@@ -499,13 +628,23 @@ export function AnimationEditor() {
                   Cancel
                 </button>
               ) : (
-                <button
-                  className="primary-button"
-                  disabled={!source}
-                  onClick={() => void convert()}
-                >
-                  Convert animation<span aria-hidden="true">→</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={!source}
+                    onClick={() => void convert(options, true)}
+                  >
+                    Preview first frame
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={!source}
+                    onClick={() => void convert()}
+                  >
+                    Convert animation<span aria-hidden="true">→</span>
+                  </button>
+                </>
               )}
               {output && !busy && (
                 <a className="primary-button" href={output.url} download={output.filename}>
@@ -517,6 +656,13 @@ export function AnimationEditor() {
           </div>
         </div>
       </section>
+      <PresetGallery
+        settings={s}
+        disabled={busy || loading}
+        apply={(preset) =>
+          applyPalette({ ...clearPaletteChanges(s), customPalette: undefined, ...preset.settings })
+        }
+      />
       <footer>
         <span>CRTVD / CRT Visual Downscaler</span>
         <span className="footer-badges">

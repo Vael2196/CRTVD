@@ -1,3 +1,5 @@
+import { uniqueColours } from '../palettes';
+import type { PaletteTrainer } from '@vael2196/crtvd';
 import { createProcessor } from '@vael2196/crtvd';
 import type { AnimationRequest, AnimationResponse, ClipSource } from './types';
 import { openClip } from './video';
@@ -17,6 +19,8 @@ scope.onmessage = async ({ data }) => {
   busy = true;
   let clip: ClipSource | undefined;
   let processor: FrameProcessor | undefined;
+  let effectTrainer: PaletteTrainer | undefined;
+  let disposeEngine: (() => void) | undefined;
   let writer: FrameWriter | undefined;
   let finished = false;
   try {
@@ -30,45 +34,112 @@ scope.onmessage = async ({ data }) => {
     const { width, height } = animationSize(clip.info, o.settings.targetWidth);
     const url = new URL(`${import.meta.env.BASE_URL}wasm/crtvd.js`, scope.location.origin);
     const engine = await createProcessor({ loaderUrl: url });
+    // An already analysed clip can preview with its full palette. Explicit
+    // palettes and manual edits still take precedence in FrameProcessor.
     const settings = {
       ...o.settings,
       colours: Math.min(o.settings.colours, o.format === 'gif' ? 255 : 256),
+      customPalette:
+        o.settings.customPalette ?? (data.type === 'preview' ? data.trainedPalette : undefined),
     };
-    processor = new FrameProcessor(engine, width, height, settings);
-    // Negotiate the output before spending time on the palette pass.
-    writer =
-      o.format === 'gif'
-        ? gifWriter(width, height, clip.info.repeat)
-        : await videoWriter(o.format, width, height, o.fps);
-    const total = clip.info.frameCount ?? Math.ceil(clip.info.duration * o.fps - 1e-7);
-    const shared = settings.palette === 'adaptive';
-    let count = 0;
-    if (shared) {
+    disposeEngine = () => engine.dispose();
+    const gif = o.format === 'gif';
+    processor = new FrameProcessor(engine, width, height, settings, gif ? 255 : 256);
+    const prepare = (frame: Parameters<FrameProcessor['process']>[0]) =>
+      gif ? frame : flattenFrame(frame, o.matte);
+    if (data.type === 'preview') {
       for await (const frame of clip.frames(o.fps)) {
-        if (++count > LIMITS.frames) throw new Error('The clip exceeds 900 frames.');
-        processor.train(o.format === 'gif' ? frame : flattenFrame(frame, o.matte));
+        const result = processor.process(prepare(frame));
+        const rgba = result.rgba.buffer;
+        scope.postMessage(
+          {
+            type: 'preview',
+            width,
+            height,
+            rgba,
+            palette: Array.from(result.palette),
+            originalPalette: Array.from(result.originalPalette),
+          },
+          [rgba],
+        );
+        return;
+      }
+      throw new Error('The clip contains no frames to preview.');
+    }
+    writer = gif
+      ? gifWriter(width, height, clip.info.repeat)
+      : await videoWriter(o.format === 'mp4' ? 'mp4' : 'webm', width, height, o.fps);
+    const total = clip.info.frameCount ?? Math.ceil(clip.info.duration * o.fps - 1e-7);
+    const shared = processor.needsTraining;
+    const compositeGif = gif && processor.activeEffects;
+    const stages = 1 + Number(shared) + Number(compositeGif);
+    let stage = 0;
+    const progress = (phase: 'palette' | 'effects' | 'encoding', count: number) => {
+      if (count === 1 || count === total || count % 4 === 0)
         scope.postMessage({
           type: 'progress',
-          phase: 'palette',
-          fraction: (0.5 * count) / total,
+          phase,
+          fraction: (stage + count / total) / stages,
           frame: count,
         });
+    };
+    const check = (count: number) => {
+      if (count > LIMITS.frames) throw new Error('The clip exceeds 900 frames.');
+    };
+    if (shared) {
+      let count = 0;
+      for await (const frame of clip.frames(o.fps)) {
+        check(++count);
+        processor.train(prepare(frame));
+        progress('palette', count);
       }
       processor.finishTraining(settings.colours);
+      stage++;
     }
-    count = 0;
+    let gifPalette: Uint8Array | undefined;
+    if (compositeGif) {
+      // GIF has one shared RGB table plus the transparent index. Keep the
+      // user's colours, then learn additional source/fringe colours across
+      // the clip without holding decoded frames in memory.
+      let base: number[] = [];
+      let count = 0;
+      for await (const frame of clip.frames(o.fps)) {
+        check(++count);
+        const result = processor.process(frame);
+        if (count === 1) {
+          base = uniqueColours(result.palette);
+          if (base.length === 255 * 3) break;
+          effectTrainer = engine.createPaletteTrainer({ width, height });
+        }
+        effectTrainer?.addFrame({ data: result.rgba, width, height }, frame.duration);
+        progress('effects', count);
+      }
+      const extra = effectTrainer?.finish(Math.max(2, 255 - base.length / 3));
+      gifPalette = Uint8Array.from(uniqueColours([...base, ...(extra ?? [])]).slice(0, 255 * 3));
+      effectTrainer?.dispose();
+      effectTrainer = undefined;
+      stage++;
+    }
+    let count = 0;
     let palette: number[] = [];
+    let originalPalette: number[] = [];
     for await (const frame of clip.frames(o.fps)) {
-      if (++count > LIMITS.frames) throw new Error('The clip exceeds 900 frames.');
-      const result = processor.process(o.format === 'gif' ? frame : flattenFrame(frame, o.matte));
-      if (!palette.length) palette = Array.from(result.palette);
-      await writer.add(result.rgba, result.palette, frame.timestamp, frame.duration);
-      scope.postMessage({
-        type: 'progress',
-        phase: 'encoding',
-        fraction: (shared ? 0.5 : 0) + ((shared ? 0.5 : 1) * count) / total,
-        frame: count,
-      });
+      check(++count);
+      const result = processor.process(prepare(frame));
+      if (count === 1) {
+        palette = Array.from(result.palette);
+        originalPalette = Array.from(result.originalPalette);
+      }
+      if (gifPalette) {
+        const indexed = engine.processFrame(
+          { data: result.rgba, width, height },
+          { width, height, customPalette: gifPalette, dither: 'none' },
+        );
+        await writer.add(indexed.data, gifPalette, frame.timestamp, frame.duration);
+      } else {
+        await writer.add(result.rgba, result.palette, frame.timestamp, frame.duration);
+      }
+      progress('encoding', count);
     }
     const bytes = await writer.finish();
     finished = true;
@@ -84,6 +155,7 @@ scope.onmessage = async ({ data }) => {
         frames: count,
         duration: clip.info.duration,
         palette,
+        originalPalette,
       },
       [buffer],
     );
@@ -99,7 +171,9 @@ scope.onmessage = async ({ data }) => {
       } catch {
         /* Preserve the original error. */
       }
-    processor?.dispose();
+    effectTrainer?.dispose();
+    if (processor) processor.dispose();
+    else disposeEngine?.();
     clip?.dispose();
     busy = false;
   }

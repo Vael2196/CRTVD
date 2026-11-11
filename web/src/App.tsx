@@ -5,39 +5,14 @@ import { DEFAULT_SETTINGS } from './types';
 import type { Settings, SourceImage } from './types';
 import { useEngine } from './useEngine';
 import { isCancelled } from './uploads';
+import { AdvancedSettings, BlendHandles } from './AdvancedTools';
+import { PalettePanel, PresetGallery } from './PaletteTools';
+import { clearPaletteChanges, editSwatch } from './palettes';
+import { DEFAULT_EFFECTS } from './effects';
 import { lazy, Suspense } from 'react';
 const AnimationEditor = lazy(() =>
   import('./animation/AnimationEditor').then((m) => ({ default: m.AnimationEditor })),
 );
-
-const PRESETS: { name: string; detail: string; settings: Partial<Settings> }[] = [
-  {
-    name: 'Soft dusk',
-    detail: '16 colours · ordered',
-    settings: {
-      palette: 'adaptive',
-      colours: 16,
-      dither: 'bayer',
-      strength: 0.65,
-      resample: 'area',
-    },
-  },
-  {
-    name: 'Paper & ink',
-    detail: '2 colours · diffusion',
-    settings: { palette: 'monochrome', dither: 'floyd', strength: 1, resample: 'area' },
-  },
-  {
-    name: 'Pocket green',
-    detail: '4 colours · ordered',
-    settings: { palette: 'handheld', dither: 'bayer', strength: 0.85, resample: 'area' },
-  },
-  {
-    name: 'Electric four',
-    detail: '4 colours · diffusion',
-    settings: { palette: 'cga', dither: 'floyd', strength: 0.8, resample: 'area' },
-  },
-];
 
 function UploadIcon() {
   return (
@@ -100,7 +75,15 @@ function StillImageEditor() {
   }, [result]);
 
   const change = <K extends keyof Settings>(key: K, value: Settings[K]) =>
-    setSettings((s) => ({ ...s, [key]: value }));
+    setSettings((s) =>
+      key === 'palette'
+        ? {
+            ...clearPaletteChanges(s),
+            palette: value as Settings['palette'],
+            customPalette: undefined,
+          }
+        : { ...s, [key]: value },
+    );
   const load = async (file?: File) => {
     if (!file) return;
     const id = ++loadId.current;
@@ -143,16 +126,18 @@ function StillImageEditor() {
     setSource(demoImage());
   };
   const size = source ? outputSize(source, settings.targetWidth) : { width: 160, height: 107 };
-  const palette: string[] = [];
-  if (result)
-    for (let i = 0; i < result.palette.length; i += 3)
-      palette.push(
-        '#' +
-          result.palette
-            .slice(i, i + 3)
-            .map((x) => x.toString(16).padStart(2, '0'))
-            .join(''),
-      );
+  const effects = settings.effects ?? DEFAULT_EFFECTS;
+  const palette =
+    settings.paletteEdit?.colours ??
+    settings.importedPalette ??
+    settings.customPalette ??
+    result?.palette ??
+    [];
+  const hasOverrides = !!(
+    settings.paletteEdit ||
+    settings.importedPalette ||
+    settings.customPalette
+  );
   const exportImage = async () => {
     if (!nativeCanvas.current || !result) return;
     setExporting(true);
@@ -170,9 +155,6 @@ function StillImageEditor() {
       setExporting(false);
     }
   };
-  const activePreset = PRESETS.find((p) =>
-    Object.entries(p.settings).every(([key, value]) => settings[key as keyof Settings] === value),
-  );
   const status = error
     ? 'Engine unavailable'
     : !ready
@@ -293,15 +275,20 @@ function StillImageEditor() {
             <label htmlFor="palette">Colour palette</label>
             <select
               id="palette"
-              value={settings.palette}
+              value={hasOverrides ? 'custom' : settings.palette}
               onChange={(e) => change('palette', e.target.value as Settings['palette'])}
             >
               <option value="adaptive">Adaptive · from your image</option>
+              {hasOverrides && (
+                <option value="custom" disabled>
+                  Custom · current swatches
+                </option>
+              )}
               <option value="monochrome">Paper & ink · black and white</option>
               <option value="handheld">Pocket green · 4 colours</option>
               <option value="cga">Electric four · cyan and magenta</option>
             </select>
-            {settings.palette === 'adaptive' && (
+            {settings.palette === 'adaptive' && !hasOverrides && (
               <div className="colour-control">
                 <label htmlFor="colours">Maximum colours</label>
                 <select
@@ -345,6 +332,13 @@ function StillImageEditor() {
               />
             </div>
           </div>
+          <AdvancedSettings
+            effects={effects}
+            change={(next) => {
+              if (effects.blend === 'off' && next.blend !== 'off') setView('output');
+              change('effects', next);
+            }}
+          />
         </aside>
         <div className="preview-panel">
           <div className="preview-toolbar">
@@ -397,6 +391,9 @@ function StillImageEditor() {
                 }}
                 aria-label="Converted image preview"
               />
+              {view === 'output' && result && effects.blend !== 'off' && (
+                <BlendHandles effects={effects} change={(next) => change('effects', next)} />
+              )}
               {view === 'split' && result && (
                 <>
                   <div className="split-line" style={{ left: `${split}%` }}>
@@ -438,23 +435,25 @@ function StillImageEditor() {
               {loadError || error}
             </div>
           )}
-          <div className="palette-panel">
-            <div className="palette-heading">
-              <span>YOUR PALETTE</span>
-              <span>{palette.length ? `${palette.length} colours` : '—'}</span>
-            </div>
-            <div className="swatches">
-              {palette.map((colour, i) => (
-                <span
-                  key={`${i}-${colour}`}
-                  style={{ background: colour }}
-                  title={colour}
-                  aria-label={colour}
-                />
-              ))}
-            </div>
-            <p>RGB colours only; transparency is preserved separately.</p>
-          </div>
+          <PalettePanel
+            colours={palette}
+            altered={!!(settings.paletteEdit || settings.importedPalette)}
+            disabled={loading || processing}
+            onEdit={(index, rgb) =>
+              setSettings((s) =>
+                editSwatch(
+                  s,
+                  s.importedPalette ?? s.customPalette ?? result?.originalPalette ?? palette,
+                  index,
+                  rgb,
+                ),
+              )
+            }
+            onDefault={() => setSettings(clearPaletteChanges)}
+            onImport={(colours) =>
+              setSettings((s) => ({ ...s, importedPalette: colours, paletteEdit: undefined }))
+            }
+          />
           <div className="export-bar">
             <div>
               <strong>Keep the pixels.</strong>
@@ -488,35 +487,16 @@ function StillImageEditor() {
           </div>
         </div>
       </section>
-      <section className="preset-section" aria-label="Presets">
-        <div>
-          <p className="eyebrow">A PLACE TO START</p>
-          <h2>Four ways to see it.</h2>
-        </div>
-        <div className="preset-grid">
-          {PRESETS.map((preset, index) => (
-            <button
-              key={preset.name}
-              className={`preset-card preset-${index} ${activePreset?.name === preset.name ? 'active' : ''}`}
-              aria-pressed={activePreset?.name === preset.name}
-              onClick={() => setSettings((s) => ({ ...s, ...preset.settings }))}
-            >
-              <span className="preset-art" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-                <i />
-                <i />
-              </span>
-              <span className="preset-title">
-                {preset.name}
-                <span aria-hidden="true">↗</span>
-              </span>
-              <small>{preset.detail}</small>
-            </button>
-          ))}
-        </div>
-      </section>
+      <PresetGallery
+        settings={settings}
+        apply={(preset) =>
+          setSettings((s) => ({
+            ...clearPaletteChanges(s),
+            customPalette: undefined,
+            ...preset.settings,
+          }))
+        }
+      />
       <footer>
         <span>
           CRTVD <span className="footer-dot">/</span> CRT Visual Downscaler

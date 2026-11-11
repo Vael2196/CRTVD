@@ -1,5 +1,7 @@
 import { createProcessor } from '@vael2196/crtvd';
-import type { Processor, Frame } from '@vael2196/crtvd';
+import type { Processor, Frame, ProcessedFrame } from '@vael2196/crtvd';
+import { quantisationPalette, remapPalette } from './palettes';
+import { effectEnabled, EffectRenderer } from './effects';
 import type { WorkerRequest, WorkerResponse } from './types';
 const worker = self as unknown as {
   location: Location;
@@ -21,6 +23,7 @@ initialised.catch(() =>
   }),
 );
 let queue = initialised;
+let cached: { key: string; result: ProcessedFrame } | undefined;
 worker.onmessage = ({ data }) => {
   queue = queue
     .then(() => {
@@ -38,17 +41,41 @@ worker.onmessage = ({ data }) => {
           generation: data.generation,
           frame: { data: new Uint8Array(data.rgba), width: data.width, height: data.height },
         };
+        cached = undefined;
         worker.postMessage({ type: 'source-ready', generation: data.generation });
         return;
       }
       if (!source || source.generation !== data.generation) return;
       const o = data.settings;
-      const result = engine.processFrame(source.frame, {
-        ...o,
-        width: data.width,
-        height: data.height,
-      });
-      const rgba = result.data.buffer;
+      const started = performance.now();
+      const custom = quantisationPalette(o);
+      const { width, height } = data;
+      const key = JSON.stringify([
+        width,
+        height,
+        o.resample,
+        o.dither,
+        o.strength,
+        o.palette,
+        o.colours,
+        custom && Array.from(custom),
+      ]);
+      if (cached?.key !== key)
+        cached = {
+          key,
+          result: engine.processFrame(source.frame, { ...o, width, height, customPalette: custom }),
+        };
+      const result = cached.result;
+      let pixels = remapPalette(o.paletteEdit)(result.data);
+      if (effectEnabled(o.effects))
+        pixels = new EffectRenderer(width, height, o.effects).apply(
+          source.frame.data,
+          source.frame.width,
+          source.frame.height,
+          pixels,
+        );
+      // The cache owns the original conversion; transfer only a fresh buffer.
+      const rgba = (pixels === result.data ? pixels.slice() : pixels).buffer;
       worker.postMessage(
         {
           type: 'result',
@@ -57,8 +84,9 @@ worker.onmessage = ({ data }) => {
           width: result.width,
           height: result.height,
           rgba,
-          palette: Array.from(result.palette),
-          milliseconds: result.totalMs,
+          palette: o.paletteEdit?.colours ?? Array.from(result.palette),
+          originalPalette: Array.from(result.palette),
+          milliseconds: performance.now() - started,
         },
         [rgba],
       );

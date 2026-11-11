@@ -1,18 +1,35 @@
 import type { Processor, PaletteTrainer } from '@vael2196/crtvd';
 import type { ClipFrame } from './types';
 import type { Settings } from '../types';
+import { quantisationPalette, remapPalette } from '../palettes';
+import { effectEnabled, EffectRenderer } from '../effects';
 
 export class FrameProcessor {
   private trainer: PaletteTrainer | undefined;
   private palette: Uint8Array | undefined;
+  private recolour: ReturnType<typeof remapPalette>;
+  private effects?: EffectRenderer;
   constructor(
     private engine: Processor,
     private width: number,
     private height: number,
     private settings: Settings,
-  ) {}
+    maxColours = 256,
+  ) {
+    this.palette = quantisationPalette(settings, maxColours);
+    this.recolour = remapPalette(settings.paletteEdit);
+    if (effectEnabled(settings.effects))
+      this.effects = new EffectRenderer(width, height, settings.effects);
+  }
+  get needsTraining() {
+    return !this.palette && this.settings.palette === 'adaptive';
+  }
+  get activeEffects() {
+    return !!this.effects;
+  }
   private options() {
-    return { ...this.settings, width: this.width, height: this.height };
+    const { palette, dither, strength, resample, colours } = this.settings;
+    return { palette, dither, strength, resample, colours, width: this.width, height: this.height };
   }
   train(frame: ClipFrame) {
     this.trainer ??= this.engine.createPaletteTrainer(this.options());
@@ -32,7 +49,15 @@ export class FrameProcessor {
       { data: frame.rgba, width: frame.width, height: frame.height },
       { ...this.options(), customPalette: this.palette },
     );
-    return { rgba: result.data, palette: result.palette };
+    let rgba = this.recolour(result.data);
+    if (this.effects) rgba = this.effects.apply(frame.rgba, frame.width, frame.height, rgba);
+    return {
+      rgba,
+      palette: this.settings.paletteEdit
+        ? Uint8Array.from(this.settings.paletteEdit.colours)
+        : result.palette,
+      originalPalette: result.palette,
+    };
   }
   dispose() {
     this.trainer?.dispose();
