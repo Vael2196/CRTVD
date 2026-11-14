@@ -102,6 +102,10 @@ test('preset gallery expands, and local palette codes round trip without storing
     if (/^https?:$/.test(url.protocol) && url.hostname !== '127.0.0.1') outside.push(url.hostname);
   });
   await image(page);
+  await page.getByRole('button', { name: /Anime Orange & Green/ }).click();
+  await expect(swatch(page, '#D74D38')).toBeEnabled();
+  await page.getByRole('button', { name: /Sega CD Weirdcore/ }).click();
+  await expect(swatch(page, '#4E2A5B')).toBeEnabled();
   await page.getByRole('button', { name: /Cross Section/ }).click();
   await expect(swatch(page, '#E7462D')).toBeEnabled();
   await expect(page.getByRole('button', { name: /Console Night/ })).toHaveCount(0);
@@ -251,4 +255,86 @@ test('chromatic aberration and purple fringing reach the PNG rather than only th
       original.data.filter((_, i) => i % 4 === 3),
     );
   }
+});
+
+test('blur, swatch targeting and ASCII are applied to the downloaded PNG', async ({ page }) => {
+  await image(page, 'contrast');
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByLabel('Blur type').selectOption('gaussian');
+  await page.getByRole('slider', { name: 'Blur radius' }).press('End');
+  const blurred = await exportPng(page);
+  expect(pixel(blurred, 16, 16)[0]).toBeGreaterThan(0);
+  expect(pixel(blurred, 15, 16)[0]).toBeLessThan(255);
+
+  await page.getByLabel('Apply effects to').selectOption('except');
+  const black = page
+    .getByRole('group', { name: 'Colours for effect targeting' })
+    .getByRole('button', { name: '#000000' });
+  await black.click();
+  await expect(black).toHaveAttribute('aria-pressed', 'true');
+  const locked = await exportPng(page);
+  expect(pixel(locked, 16, 16)).toEqual([0, 0, 0, 255]);
+  expect(pixel(locked, 15, 16)).toEqual(pixel(blurred, 15, 16));
+
+  await page.getByLabel('Apply effects to').selectOption('only');
+  const only = await exportPng(page);
+  expect(pixel(only, 16, 16)).toEqual(pixel(blurred, 16, 16));
+  expect(pixel(only, 15, 16)).toEqual([255, 255, 255, 255]);
+
+  await page.getByLabel('Apply effects to').selectOption('all');
+  await page.getByLabel('Blur type').selectOption('off');
+  await page.getByLabel('Render as ASCII').check();
+  await page.getByLabel('ASCII symbols').selectOption('custom');
+  await page.getByLabel('Custom ASCII characters').fill('A');
+  await page.getByLabel('ASCII cell size').fill('8');
+  const ascii = await exportPng(page);
+  expect(pixel(ascii, 1, 0)).toEqual([0, 0, 0, 255]);
+  expect(pixel(ascii, 2, 0)).toEqual([255, 255, 255, 255]);
+  await page.getByRole('button', { name: 'Reset effects' }).click();
+  expect(pixel(await exportPng(page), 1, 0)).toEqual([255, 255, 255, 255]);
+});
+
+test('ASCII and colour targeting reach GIF downloads without changing the loop or delays', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Animation', exact: true }).click();
+  const w = 16,
+    h = 8;
+  const clip = fixtureGif(
+    [4, 3].map((index, i) => ({
+      pixels: Array.from({ length: w * h }, (_, p) => (p % w < 8 ? 1 : index)),
+      delay: i === 0 ? 7 : 13,
+    })),
+    w,
+    h,
+  );
+  await page.getByLabel('Upload animation').setInputFiles({
+    name: 'ascii.gif',
+    mimeType: 'image/gif',
+    buffer: Buffer.from(clip),
+  });
+  await expect(convertButton(page)).toBeEnabled();
+  await importCode(page, 'CRTVD1:FF0000FFFFFF0000FF000000');
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByLabel('Apply effects to').selectOption('except');
+  await page
+    .getByRole('group', { name: 'Colours for effect targeting' })
+    .getByRole('button', { name: '#FF0000' })
+    .click();
+  await page.getByLabel('Render as ASCII').check();
+  await page.getByLabel('ASCII symbols').selectOption('custom');
+  await page.getByLabel('Custom ASCII characters').fill('A');
+  await page.getByLabel('ASCII cell size').fill('8');
+  await convertButton(page).click();
+  const gif = await exportGif(page);
+  expect(gif.frames.map((frame) => frame.slice(0, 4))).toEqual([
+    [255, 0, 0, 255],
+    [255, 0, 0, 255],
+  ]);
+  expect(gif.frames[0].slice(8 * 4, 9 * 4)).toEqual([0, 0, 0, 255]);
+  expect(gif.frames[0].slice(10 * 4, 11 * 4)).toEqual([255, 255, 255, 255]);
+  expect(gif.frames[1].slice(10 * 4, 11 * 4)).toEqual([0, 0, 255, 255]);
+  expect(gif.clip.info.duration).toBeCloseTo(0.2);
+  expect(gif.clip.info.repeat).toBe(2);
 });

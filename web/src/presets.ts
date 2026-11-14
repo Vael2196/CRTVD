@@ -68,6 +68,51 @@ export const recommended: Preset[] = [
       strength: 0.5,
     },
   },
+  {
+    name: 'Anime Orange & Green',
+    detail: '90s anime · Color Hex',
+    settings: {
+      customPalette: palette('D74D38 398156 EE5732 09A058 AAAAAA'),
+      dither: 'bayer',
+      strength: 0.55,
+    },
+  },
+  {
+    name: 'Sega CD Weirdcore',
+    detail: 'Dreamy purples and pink · ColorMagic',
+    settings: {
+      customPalette: palette('4E2A5B 6E4E8D 9B79B9 F3A0C0 FCDFD4'),
+      dither: 'bayer',
+      strength: 0.55,
+    },
+  },
+  {
+    name: '90s Anime',
+    detail: 'Coral, amber and indigo · ColorMagic',
+    settings: {
+      customPalette: palette('FF6E61 FFB84D 6D9DC5 5E4B8B DA1B61'),
+      dither: 'bayer',
+      strength: 0.55,
+    },
+  },
+  {
+    name: 'Addams Family Vibes',
+    detail: 'Dusty rose and charcoal · ColorMagic',
+    settings: {
+      customPalette: palette('4C3E3F 8B7B8E 9B4B58 F1CBC6 2D2A37'),
+      dither: 'floyd',
+      strength: 0.6,
+    },
+  },
+  {
+    name: '90s Grunge',
+    detail: 'Washed taupes and cream · ColorMagic',
+    settings: {
+      customPalette: palette('4B3D3A 7A5D57 B9A7A2 D4B2A0 F4E4E1'),
+      dither: 'floyd',
+      strength: 0.65,
+    },
+  },
 ];
 
 // RGB values from ColorAny's Retro Console collection. Titles shortened;

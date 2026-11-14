@@ -30,8 +30,13 @@ SOFTWARE.
 
 React/React DOM and all build/test dependencies retain their package licences.
 Emscripten's generated loader and linked runtime components retain the licences
-from the corresponding SDK distribution. No external image, icon, or font asset
-is bundled; the landscape sample and decorative UI shapes are generated locally.
+from the corresponding SDK distribution. The landscape sample and decorative UI
+shapes are generated locally.
+
+The web ASCII renderer embeds the printable subset of the public-domain
+`font8x8_basic.h` by Daniel Hepper, based on public-domain IBM VGA glyphs by
+Marcel Sondaar (https://github.com/dhepper/font8x8, revision
+`8e279d2d864e79128e96188a6b9526cfa3fbfef9`). The editor does not fetch glyphs at runtime.
 
 ## Animation dependencies
 

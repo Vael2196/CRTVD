@@ -199,7 +199,7 @@ export function AnimationEditor() {
     progress?.phase === 'palette'
       ? 'Learning palette'
       : progress?.phase === 'effects'
-        ? 'Learning blend colours'
+        ? 'Learning effect colours'
         : 'Encoding frames';
   const percent = progress ? Math.min(100, Math.round(progress.fraction * 100)) : 0;
 
@@ -429,6 +429,7 @@ export function AnimationEditor() {
           </fieldset>
           <AdvancedSettings
             effects={effects}
+            palette={palette}
             disabled={busy || loading}
             change={(next) => setting('effects', next)}
           />
@@ -543,7 +544,7 @@ export function AnimationEditor() {
             </p>
             <p>
               {effectEnabled(effects) && options.format === 'gif'
-                ? 'GIF adds shared blend colours where space allows, then maps the composite to its 255-colour limit.'
+                ? 'GIF adds shared effect colours where space allows, then maps the composite to its 255-colour limit.'
                 : 'GIF keeps exact palette colours; lossy video encoding may introduce nearby colours.'}{' '}
               Previews play independently.
             </p>
@@ -598,7 +599,7 @@ export function AnimationEditor() {
           {firstFrame && (
             <p className="field-note preview-note">
               First frame only. Before the full clip is analysed, an adaptive preview estimates its
-              palette from this frame. GIF may simplify blend colours during export.
+              palette from this frame. GIF may simplify effect colours during export.
             </p>
           )}
           {output && (

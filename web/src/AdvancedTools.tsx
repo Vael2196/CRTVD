@@ -2,13 +2,16 @@ import { useId, useState } from 'react';
 import type { PointerEvent } from 'react';
 import { DEFAULT_EFFECTS, edgePoint, nearestEdge, separateEndpoint } from './effects';
 import type { Effects } from './effects';
+import { EffectOptions } from './EffectOptions';
 
 export function AdvancedSettings({
   effects = DEFAULT_EFFECTS,
+  palette,
   change,
   disabled,
 }: {
   effects?: Effects;
+  palette: number[];
   change(effects: Effects): void;
   disabled?: boolean;
 }) {
@@ -112,6 +115,7 @@ export function AdvancedSettings({
                 onChange={(e) => update({ purple: +e.target.value / 100 })}
               />
             </label>
+            <EffectOptions effects={effects} palette={palette} update={update} />
             <button type="button" className="text-button" onClick={() => change(DEFAULT_EFFECTS)}>
               Reset effects
             </button>

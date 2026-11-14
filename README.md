@@ -42,9 +42,10 @@ media upload or account required.
 - **Animations with one palette per clip.** Adaptive mode learns a palette from the whole animation,
   weighted by each frame's display duration, then reuses it for every frame.
 - **Editable, shareable palettes.** Replace a swatch without changing the dither pattern, try
-  Soft Club and retro console presets, or copy a palette code between projects.
+  Soft Club, 90s anime and retro console presets, or copy a palette code between projects.
 - **Source blends and lens effects.** Drag either end of a split to blend the source and
-  conversion. Add chromatic aberration or purple fringing to stills and animations.
+  conversion. Add blur, chromatic aberration, purple fringing or ASCII glyphs to stills and
+  animations, with the option to target or protect individual palette colours.
 - **Useful exports.** Save transparent PNGs at their processing size or an integer pixel scale.
   Export animations as GIF, WebM or MP4 where the browser supports the required codecs.
 - **An interface with an earlier-web feel.** Bevelled panels, blue title bars, a tiled navy

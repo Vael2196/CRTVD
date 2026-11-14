@@ -1,3 +1,10 @@
+import { createAscii } from './ascii';
+import type { AsciiOptions } from './ascii';
+import { clamp, createBlur, linear, rgbKey, srgb } from './filters';
+import type { BlurMode, Filter } from './filters';
+
+export { clamp } from './filters';
+export type ColourScope = 'all' | 'except' | 'only';
 export type BlendMode = 'off' | 'hard' | 'feather' | 'pyramid';
 export interface Effects {
   blend: BlendMode;
@@ -7,6 +14,12 @@ export interface Effects {
   flip: boolean;
   aberration: number;
   purple: number;
+  blur: BlurMode;
+  blurRadius: number;
+  blurRange: number;
+  colourScope: ColourScope;
+  effectColours: number[];
+  ascii?: AsciiOptions;
 }
 
 export const DEFAULT_EFFECTS: Effects = {
@@ -17,12 +30,15 @@ export const DEFAULT_EFFECTS: Effects = {
   flip: false,
   aberration: 0,
   purple: 0,
+  blur: 'off',
+  blurRadius: 2,
+  blurRange: 0.3,
+  colourScope: 'all',
+  effectColours: [],
 };
 
 export const effectEnabled = (e?: Effects): e is Effects =>
-  !!e && (e.blend !== 'off' || e.aberration > 0 || e.purple > 0);
-
-export const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+  !!e && (e.blend !== 'off' || e.aberration > 0 || e.purple > 0 || e.blur !== 'off' || !!e.ascii);
 export const wrap = (value: number) => ((value % 1) + 1) % 1;
 
 export function edgePoint(position: number): [number, number] {
@@ -42,19 +58,19 @@ export function separateEndpoint(position: number, other: number) {
   return wrap(other + (Math.abs(delta) >= 0.008 ? delta : delta < 0 ? -0.008 : 0.008));
 }
 
-function blendMask(w: number, h: number, e: Effects) {
+function blendMask(w: number, h: number, e: Effects, transition?: number) {
   const [ax, ay] = edgePoint(e.a),
     [bx, by] = edgePoint(e.b);
   const dx = (bx - ax) * w,
     dy = (by - ay) * h;
   const scale = (e.flip ? -1 : 1) / (Math.hypot(dx, dy) || 1);
-  const band = Math.max(1, Math.min(w, h) * e.feather);
+  const band = transition ?? Math.max(1, Math.min(w, h) * e.feather);
   const mask = new Float32Array(w * h);
   for (let y = 0, i = 0; y < h; y++) {
     const row = (dx * (y + 0.5 - ay * h) + dy * (ax * w - 0.5)) * scale;
     for (let x = 0; x < w; x++, i++) {
       const d = row - x * dy * scale;
-      if (e.blend !== 'feather') mask[i] = d >= 0 ? 1 : 0;
+      if (transition === undefined && e.blend !== 'feather') mask[i] = d >= 0 ? 1 : 0;
       else {
         const t = clamp(0.5 + d / band);
         mask[i] = t * t * (3 - 2 * t);
@@ -63,14 +79,6 @@ function blendMask(w: number, h: number, e: Effects) {
   }
   return mask;
 }
-
-const linear = Float32Array.from({ length: 256 }, (_, x) =>
-  x <= 10 ? x / 3294.6 : ((x / 255 + 0.055) / 1.055) ** 2.4,
-);
-const gamma = Uint8Array.from({ length: 4097 }, (_, x) => {
-  const v = x / 4096;
-  return Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055));
-});
 
 type Pixels = Uint8Array | Uint8ClampedArray;
 interface FloatImage {
@@ -98,7 +106,7 @@ function toBytes({ data }: FloatImage) {
     out[i + 3] = Math.round(a * 255);
     if (!out[i + 3]) continue;
     const gain = 1 / a;
-    for (let c = 0; c < 3; c++) out[i + c] = gamma[Math.round(clamp(data[i + c] * gain) * 4096)];
+    for (let c = 0; c < 3; c++) out[i + c] = srgb(data[i + c] * gain);
   }
   return out;
 }
@@ -275,14 +283,23 @@ function fringe(input: Uint8Array, w: number, h: number, e: Effects) {
 /** Masks and their Gaussian levels are shared by all frames of a job. */
 export class EffectRenderer {
   private masks: FloatImage[] = [];
+  private transition?: Float32Array;
+  private blur?: Filter;
+  private ascii?: Filter;
+  private effectColours: Set<number>;
   constructor(
     private w: number,
     private h: number,
     private e: Effects,
   ) {
+    this.effectColours = new Set(e.effectColours);
+    this.blur = createBlur(w, h, e.blur, e.blurRadius, e.blurRange);
+    if (e.ascii) this.ascii = createAscii(w, h, e.ascii);
     if (e.blend === 'off') return;
     this.masks.push({ data: blendMask(w, h, e), w, h });
     if (e.blend === 'pyramid') {
+      // Limit the multiscale transition so neither layer changes far across the seam.
+      this.transition = blendMask(w, h, e, Math.min(40, Math.max(1, Math.min(w, h) * 0.85)));
       for (let depth = 0; depth < 4; depth++) {
         const level = this.masks[this.masks.length - 1];
         if (Math.min(level.w, level.h) < 4) break;
@@ -292,25 +309,59 @@ export class EffectRenderer {
   }
   apply(source: Pixels, iw: number, ih: number, converted: Uint8Array<ArrayBuffer>) {
     const { w, h, e, masks } = this;
-    let out = converted;
-    if (masks.length) {
-      const a = sampleSource(source, iw, ih, w, h);
-      if (e.blend === 'hard') {
-        out = toBytes(a);
-        const mask = masks[0].data;
-        for (let p = 0, i = 0; p < mask.length; p++, i += 4)
-          if (!mask[p]) {
-            out[i] = converted[i];
-            out[i + 1] = converted[i + 1];
-            out[i + 2] = converted[i + 2];
-            out[i + 3] = converted[i + 3];
+    let edited = converted;
+    if (this.blur || e.aberration || e.purple || this.ascii) {
+      let allowed: Uint8Array | undefined;
+      let active = w * h;
+      if (e.colourScope !== 'all' && (e.colourScope === 'only' || this.effectColours.size)) {
+        allowed = new Uint8Array(w * h);
+        active = 0;
+        // Classify once by the unfiltered converted RGB, even if a later filter changes it.
+        for (let p = 0, i = 0; p < allowed.length; p++, i += 4) {
+          const selected = this.effectColours.has(
+            rgbKey(converted[i], converted[i + 1], converted[i + 2]),
+          );
+          if (selected === (e.colourScope === 'only') && converted[i + 3]) {
+            allowed[p] = 1;
+            active++;
           }
-      } else {
-        const b = premultiplied(converted, w, h);
-        out = toBytes(e.blend === 'pyramid' ? pyramid(a, b, masks) : mix(a, b, masks[0].data));
+        }
+      }
+      const protect = (frame: Uint8Array<ArrayBuffer>) => {
+        if (allowed && active < allowed.length)
+          for (let p = 0, i = 0; p < allowed.length; p++, i += 4)
+            if (!allowed[p]) for (let c = 0; c < 4; c++) frame[i + c] = converted[i + c];
+        return frame;
+      };
+      if (active) {
+        // Keep protected pixels unchanged even as inputs to subsequent filters.
+        if (this.blur) edited = protect(this.blur(edited));
+        if (e.aberration || e.purple) edited = protect(fringe(edited, w, h, e));
+        if (this.ascii) edited = protect(this.ascii(edited));
       }
     }
-    if (e.aberration || e.purple) out = fringe(out, w, h, e);
-    return out;
+    if (!masks.length) return edited;
+    const a = sampleSource(source, iw, ih, w, h);
+    if (e.blend === 'hard') {
+      const out = iw === w && ih === h ? Uint8Array.from(source) : toBytes(a);
+      const mask = masks[0].data;
+      for (let p = 0, i = 0; p < mask.length; p++, i += 4)
+        if (!mask[p]) for (let c = 0; c < 4; c++) out[i + c] = edited[i + c];
+      return out;
+    }
+    const b = premultiplied(edited, w, h);
+    const blended = e.blend === 'pyramid' ? pyramid(a, b, masks) : mix(a, b, masks[0].data);
+    if (this.transition) {
+      for (let p = 0, i = 0; p < this.transition.length; p++, i += 4) {
+        const weight = this.transition[p];
+        const original = weight >= 0.5;
+        const amount = original ? 2 * (1 - weight) : 2 * weight;
+        if (amount >= 1) continue;
+        const layer = original ? a : b;
+        for (let c = 0; c < 4; c++)
+          blended.data[i + c] = amount * blended.data[i + c] + (1 - amount) * layer.data[i + c];
+      }
+    }
+    return toBytes(blended);
   }
 }

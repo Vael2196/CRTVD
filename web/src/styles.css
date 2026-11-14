@@ -2342,3 +2342,54 @@ footer a {
   display: block;
   margin: 7px 0 4px;
 }
+
+.advanced-settings .effect-block {
+  border-top: 1px solid rgb(41 63 94 / 35%);
+  margin: 16px 0 12px;
+  padding-top: 5px;
+}
+.effect-block legend {
+  padding-right: 7px;
+  font-weight: 700;
+}
+.effect-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.effect-checkbox input {
+  width: auto;
+}
+.effect-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0;
+}
+.effect-swatch {
+  position: relative;
+  width: 31px;
+  height: 31px;
+  padding: 3px;
+  display: grid;
+  border: 1px solid #677b97;
+  background: #fff;
+  cursor: pointer;
+}
+.effect-swatch[aria-pressed='true'] {
+  border: 2px solid #162745;
+}
+.effect-swatch b {
+  font-size: 11px;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  padding: 0 2px;
+  color: white;
+  background: #162745;
+}
+.effect-block input[type='text'] {
+  width: 100%;
+  min-width: 0;
+  font-family: monospace;
+}

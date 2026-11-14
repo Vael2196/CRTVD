@@ -334,6 +334,7 @@ function StillImageEditor() {
           </div>
           <AdvancedSettings
             effects={effects}
+            palette={palette}
             change={(next) => {
               if (effects.blend === 'off' && next.blend !== 'off') setView('output');
               change('effects', next);

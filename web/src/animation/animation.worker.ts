@@ -99,7 +99,7 @@ scope.onmessage = async ({ data }) => {
     let gifPalette: Uint8Array | undefined;
     if (compositeGif) {
       // GIF has one shared RGB table plus the transparent index. Keep the
-      // user's colours, then learn additional source/fringe colours across
+      // user's colours, then learn additional composite/effect colours across
       // the clip without holding decoded frames in memory.
       let base: number[] = [];
       let count = 0;
