@@ -1,3 +1,4 @@
+import { pickSlot, toggleSlot } from './selection';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { decodeImage, demoImage, downloadPng, maxOutputWidth, outputSize } from './media';
@@ -31,6 +32,7 @@ function UploadIcon() {
 function StillImageEditor() {
   const [source, setSource] = useState<SourceImage | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [picking, setPicking] = useState(false);
   const [view, setView] = useState<'split' | 'output' | 'original'>('split');
   const [split, setSplit] = useState(50);
   const [loadError, setLoadError] = useState('');
@@ -335,7 +337,14 @@ function StillImageEditor() {
           <AdvancedSettings
             effects={effects}
             palette={palette}
+            picking={picking && effects.colourScope !== 'all'}
+            onPick={() => {
+              setPicking(!picking);
+              if (!picking) setView('output');
+            }}
             change={(next) => {
+              if (next.colourScope === 'all') setPicking(false);
+              else if (effects.colourScope === 'all') setView('output');
               if (effects.blend === 'off' && next.blend !== 'off') setView('output');
               change('effects', next);
             }}
@@ -345,7 +354,14 @@ function StillImageEditor() {
           <div className="preview-toolbar">
             <div className="view-tabs" role="group" aria-label="Preview mode">
               {(['split', 'output', 'original'] as const).map((mode) => (
-                <button key={mode} aria-pressed={view === mode} onClick={() => setView(mode)}>
+                <button
+                  key={mode}
+                  aria-pressed={view === mode}
+                  onClick={() => {
+                    setView(mode);
+                    if (mode !== 'output') setPicking(false);
+                  }}
+                >
                   {mode === 'split' ? 'Compare' : mode === 'output' ? 'Converted' : 'Original'}
                 </button>
               ))}
@@ -385,14 +401,44 @@ function StillImageEditor() {
               />
               <canvas
                 ref={previewCanvas}
-                className="converted-image"
+                className={`converted-image ${view === 'output' && effects.colourScope !== 'all' && (picking || effects.blend === 'off' || effects.shape !== 'freehand') ? 'colour-picking' : ''}`}
+                onClick={(event) => {
+                  if (
+                    effects.colourScope === 'all' ||
+                    (!picking && effects.shape === 'freehand' && effects.blend !== 'off') ||
+                    view === 'original' ||
+                    processing ||
+                    !result?.slots
+                  )
+                    return;
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  if (
+                    view === 'split' &&
+                    ((event.clientX - bounds.left) / bounds.width) * 100 < split
+                  )
+                    return;
+                  const slot = pickSlot(
+                    result.slots,
+                    result.width,
+                    result.height,
+                    (event.clientX - bounds.left) / bounds.width,
+                    (event.clientY - bounds.top) / bounds.height,
+                  );
+                  const effectColours = toggleSlot(
+                    effects.effectColours,
+                    slot,
+                    result.palette.length / 3,
+                  );
+                  if (effectColours !== effects.effectColours)
+                    change('effects', { ...effects, effectColours });
+                }}
                 style={{
                   visibility: view === 'original' || !result ? 'hidden' : 'visible',
                   clipPath: view === 'split' ? `inset(0 0 0 ${split}%)` : undefined,
                 }}
                 aria-label="Converted image preview"
               />
-              {view === 'output' && result && effects.blend !== 'off' && (
+              {view === 'output' && result && effects.blend !== 'off' && !picking && (
                 <BlendHandles effects={effects} change={(next) => change('effects', next)} />
               )}
               {view === 'split' && result && (

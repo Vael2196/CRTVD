@@ -2393,3 +2393,71 @@ footer a {
   min-width: 0;
   font-family: monospace;
 }
+
+.text-button {
+  color: #153c85;
+  font-weight: 700;
+  text-underline-offset: 0.17em;
+}
+.text-button:hover {
+  color: #71235e;
+}
+.panel-heading .text-button {
+  color: #fff4a3;
+}
+.panel-heading .text-button:hover {
+  color: #fff;
+}
+.text-button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.advanced-settings .text-button {
+  min-height: 24px;
+}
+.advanced-settings .text-button[aria-pressed='true'] {
+  color: #71235e;
+}
+
+.mask-overlay polyline,
+.mask-overlay polygon {
+  fill: none;
+  stroke: #fff5c6;
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  filter: drop-shadow(0 1px 1px #000);
+}
+.mask-overlay .mask-control-guides {
+  stroke: #e2a8ef;
+  stroke-width: 1;
+}
+.mask-draw-surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+.curve-plot {
+  display: block;
+  width: 100%;
+  max-width: 270px;
+  aspect-ratio: 1;
+  overflow: visible;
+  background: #182943;
+  cursor: crosshair;
+  touch-action: none;
+}
+.colour-picking {
+  cursor: crosshair;
+}
+.pick-timeline {
+  margin: 8px 12px;
+}
+.pick-timeline input {
+  width: min(100%, 28rem);
+}
+.pick-frame-time {
+  display: block;
+  margin-top: 6px;
+}

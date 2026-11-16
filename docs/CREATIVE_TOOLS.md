@@ -30,8 +30,21 @@ a particular console's hardware palette.
 Open **Advanced settings** in the still or animation editor and choose **Blend with source**.
 Drag handles **A** and **B** along any of the four edges to position the divider. With a
 handle focused, use the arrow keys to move it around the perimeter; hold Shift for larger
-steps. The vertical and horizontal buttons give you starting points, and **Swap sides**
-exchanges the source and conversion.
+steps. The horizontal, vertical and both diagonal buttons give you starting points. Under
+**Blend shape**, choose an ellipse, rectangle, quadratic curve or freehand outline:
+
+- An ellipse starts as a circle. Stretch it with **Mask width** and **Mask height**.
+  Ellipse dimensions are relative to the shorter image side; rectangle dimensions
+  are relative to the image width and height respectively. Move either shape by
+  dragging its centre, and turn it with **Mask rotation**.
+- For a quadratic curve, drag either endpoint along the edge and the middle handle
+  inside the preview to change the bend.
+- For freehand, drag or touch the preview. CRTVD closes the stroke back to its first point
+  when that gap is shorter than joining its ends to the perimeter. Otherwise it projects
+  both ends to their nearest edges and connects them by the shorter path around the border.
+
+**Swap sides** exchanges the source and conversion, including inside and outside
+the closed shapes. Keyboard users can move the centre and bend handles with the arrow keys.
 
 | Blend mode      | What it does                                                                       |
 | --------------- | ---------------------------------------------------------------------------------- |
@@ -59,12 +72,17 @@ Bilateral, increase **Edge softness** to allow more mixing across contrasting co
 Blur preserves each pixel's alpha.
 
 Use **Apply effects to** to choose **All except selected (lock)** or **Only selected**,
-then toggle the relevant swatches under **Colour targeting**. Matching uses the exact
-palette colour after any manual replacements, before applying blur, fringes or ASCII.
-A protected pixel keeps its converted RGBA on that layer. Neighbourhood filters can still
-sample it to calculate adjacent pixels. The seam is composited separately and can still
-mix protected pixels with the source in the transition band. Selections are stored only
-for the current editor session and remembered by hex when switching palettes.
+then toggle the relevant swatches under **Colour targeting** or choose **Pick colours on
+preview** and click the converted image. In Animation, pick from a paused frame: choose a
+position and select **Show frame**. Clicking the converted video starts picking at its playhead.
+Transparent pixels and areas showing only the original do not select a swatch.
+
+Targets follow the palette slot, so swapping green for pink in that slot moves its effects
+to pink. A new palette uses the same positions; any selected positions beyond its end map to
+its last swatch. CRTVD identifies each pixel before effects, so blur or grading cannot hide its
+original swatch from the picker. A protected converted pixel keeps its RGBA; neighbourhood
+filters can still sample it for adjacent pixels. The seam is composited separately and can
+mix with the source in the transition band.
 
 **Render as ASCII** builds a glyph grid from the brightness of the converted pixels.
 Set **ASCII cell size** to control density (smaller cells fit more symbols), and
@@ -75,8 +93,15 @@ controls how strongly values move towards the ends of the ramp. Choose converted
 or white ink on a black background. Existing alpha is retained. The glyphs are rasterised
 into the image or animation at the current processing resolution.
 
-**Reset effects** clears the blend, filters, colour targets and ASCII. CRTVD applies blur,
-then fringes, then ASCII to the converted layer before putting it together with the source.
+Under **Colour curves**, choose RGB master, Red, Green or Blue. Click the graph to add a
+point and drag to adjust it. The horizontal axis is the input level; the vertical axis is the
+output. You can also add, select, move and remove points with the controls below the graph.
+The same curves apply across all frames of a clip. A curve can introduce colours outside the
+base palette.
+
+**Reset effects** clears the blend, colour curves, filters, colour targets and ASCII. CRTVD
+applies the master curve and then the per-channel curves, followed by blur, fringes and ASCII.
+It then composites that layer with the original.
 
 A composite can contain colours beyond the working palette. PNG can keep those colours. GIF
 has room for 255 opaque colours and one transparent entry, so CRTVD reserves the chosen colours
@@ -106,3 +131,6 @@ and [bilateral](https://medium.com/@chinmayiadsul/the-art-of-blur-in-image-proce
 articles, and the [ASCII art overview](https://en.wikipedia.org/wiki/ASCII_art) provided
 background. CRTVD rasterises ASCII using [font8x8](https://github.com/dhepper/font8x8),
 a public-domain bitmap font.
+
+The colour curves use the input/output convention described in [Frame.io’s guide](https://blog.frame.io/2017/09/20/beginners-guide-to-color-curves/)
+and [PremiumBeat’s overview](https://www.premiumbeat.com/blog/color-grading-with-curves/).

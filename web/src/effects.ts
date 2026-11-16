@@ -1,15 +1,18 @@
 import { createAscii } from './ascii';
 import type { AsciiOptions } from './ascii';
-import { clamp, createBlur, linear, rgbKey, srgb } from './filters';
+import { clamp, createBlur, linear, srgb } from './filters';
+import { grade } from './curves';
+import type { Curves } from './curves';
+import { edgePoint, maskPolygon, polygonDistance } from './maskGeometry';
+import type { Geometry } from './maskGeometry';
+import { NO_SWATCH, slotIndex, swatchSlots } from './selection';
 import type { BlurMode, Filter } from './filters';
 
 export { clamp } from './filters';
 export type ColourScope = 'all' | 'except' | 'only';
 export type BlendMode = 'off' | 'hard' | 'feather' | 'pyramid';
-export interface Effects {
+export interface Effects extends Geometry {
   blend: BlendMode;
-  a: number;
-  b: number;
   feather: number;
   flip: boolean;
   aberration: number;
@@ -20,12 +23,19 @@ export interface Effects {
   colourScope: ColourScope;
   effectColours: number[];
   ascii?: AsciiOptions;
+  curves?: Curves;
 }
 
 export const DEFAULT_EFFECTS: Effects = {
   blend: 'off',
   a: 0.125,
   b: 0.625,
+  shape: 'line',
+  centre: [0.5, 0.5],
+  span: [0.55, 0.55],
+  angle: 0,
+  bow: [0.82, 0.5],
+  stroke: [],
   feather: 0.12,
   flip: false,
   aberration: 0,
@@ -38,20 +48,16 @@ export const DEFAULT_EFFECTS: Effects = {
 };
 
 export const effectEnabled = (e?: Effects): e is Effects =>
-  !!e && (e.blend !== 'off' || e.aberration > 0 || e.purple > 0 || e.blur !== 'off' || !!e.ascii);
+  !!e &&
+  (e.blend !== 'off' ||
+    e.aberration > 0 ||
+    e.purple > 0 ||
+    e.blur !== 'off' ||
+    !!e.ascii ||
+    !!e.curves);
 export const wrap = (value: number) => ((value % 1) + 1) % 1;
 
-export function edgePoint(position: number): [number, number] {
-  const p = wrap(position) * 4;
-  return p < 1 ? [p, 0] : p < 2 ? [1, p - 1] : p < 3 ? [3 - p, 1] : [0, 4 - p];
-}
-
-export function nearestEdge(x: number, y: number, width: number, height: number) {
-  x = clamp(x);
-  y = clamp(y);
-  const distances = [y * height, (1 - x) * width, (1 - y) * height, x * width];
-  return wrap([x, 1 + y, 3 - x, 4 - y][distances.indexOf(Math.min(...distances))] / 4);
-}
+export { edgePoint, nearestEdge } from './maskGeometry';
 
 export function separateEndpoint(position: number, other: number) {
   const delta = wrap(position - other + 0.5) - 0.5;
@@ -65,11 +71,14 @@ function blendMask(w: number, h: number, e: Effects, transition?: number) {
     dy = (by - ay) * h;
   const scale = (e.flip ? -1 : 1) / (Math.hypot(dx, dy) || 1);
   const band = transition ?? Math.max(1, Math.min(w, h) * e.feather);
+  const useDistance = transition !== undefined || e.blend === 'feather';
+  const points = e.shape === 'line' ? [] : maskPolygon(e, w, h);
+  const signed = points.length >= 3 ? polygonDistance(points, w, h, useDistance) : undefined;
   const mask = new Float32Array(w * h);
   for (let y = 0, i = 0; y < h; y++) {
     const row = (dx * (y + 0.5 - ay * h) + dy * (ax * w - 0.5)) * scale;
     for (let x = 0; x < w; x++, i++) {
-      const d = row - x * dy * scale;
+      const d = signed ? signed(x + 0.5, y + 0.5) * (e.flip ? -1 : 1) : row - x * dy * scale;
       if (transition === undefined && e.blend !== 'feather') mask[i] = d >= 0 ? 1 : 0;
       else {
         const t = clamp(0.5 + d / band);
@@ -286,16 +295,16 @@ export class EffectRenderer {
   private transition?: Float32Array;
   private blur?: Filter;
   private ascii?: Filter;
-  private effectColours: Set<number>;
+  private grading?: Filter;
   constructor(
     private w: number,
     private h: number,
     private e: Effects,
   ) {
-    this.effectColours = new Set(e.effectColours);
+    if (e.curves) this.grading = grade(e.curves);
     this.blur = createBlur(w, h, e.blur, e.blurRadius, e.blurRange);
     if (e.ascii) this.ascii = createAscii(w, h, e.ascii);
-    if (e.blend === 'off') return;
+    if (e.blend === 'off' || (e.shape === 'freehand' && e.stroke.length < 3)) return;
     this.masks.push({ data: blendMask(w, h, e), w, h });
     if (e.blend === 'pyramid') {
       // Limit the multiscale transition so neither layer changes far across the seam.
@@ -307,21 +316,32 @@ export class EffectRenderer {
       }
     }
   }
-  apply(source: Pixels, iw: number, ih: number, converted: Uint8Array<ArrayBuffer>) {
+  /** The picker ignores areas displaying only the original layer. */
+  hideSourceSlots(slots: Uint16Array) {
+    const source = this.transition ?? this.masks[0]?.data;
+    if (source) for (let p = 0; p < slots.length; p++) if (source[p] === 1) slots[p] = NO_SWATCH;
+  }
+  apply(
+    source: Pixels,
+    iw: number,
+    ih: number,
+    converted: Uint8Array<ArrayBuffer>,
+    original = converted,
+    palette: ArrayLike<number> = [],
+    indices?: Uint16Array,
+  ) {
     const { w, h, e, masks } = this;
     let edited = converted;
-    if (this.blur || e.aberration || e.purple || this.ascii) {
+    if (this.grading || this.blur || e.aberration || e.purple || this.ascii) {
       let allowed: Uint8Array | undefined;
       let active = w * h;
-      if (e.colourScope !== 'all' && (e.colourScope === 'only' || this.effectColours.size)) {
+      if (e.colourScope !== 'all' && (e.colourScope === 'only' || e.effectColours.length)) {
+        const chosen = swatchSlots(e.effectColours, palette.length / 3);
+        const slots = indices ?? slotIndex(original, palette);
         allowed = new Uint8Array(w * h);
         active = 0;
-        // Classify once by the unfiltered converted RGB, even if a later filter changes it.
-        for (let p = 0, i = 0; p < allowed.length; p++, i += 4) {
-          const selected = this.effectColours.has(
-            rgbKey(converted[i], converted[i + 1], converted[i + 2]),
-          );
-          if (selected === (e.colourScope === 'only') && converted[i + 3]) {
+        for (let p = 0; p < slots.length; p++) {
+          if (slots[p] !== NO_SWATCH && chosen.has(slots[p]) === (e.colourScope === 'only')) {
             allowed[p] = 1;
             active++;
           }
@@ -334,6 +354,7 @@ export class EffectRenderer {
         return frame;
       };
       if (active) {
+        if (this.grading) edited = protect(this.grading(edited));
         // Keep protected pixels unchanged even as inputs to subsequent filters.
         if (this.blur) edited = protect(this.blur(edited));
         if (e.aberration || e.purple) edited = protect(fringe(edited, w, h, e));

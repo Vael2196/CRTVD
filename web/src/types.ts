@@ -55,6 +55,7 @@ export type WorkerResponse =
       width: number;
       height: number;
       rgba: ArrayBuffer;
+      slots?: ArrayBuffer;
       palette: number[];
       originalPalette: number[];
       milliseconds: number;

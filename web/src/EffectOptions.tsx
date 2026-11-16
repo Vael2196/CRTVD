@@ -2,25 +2,31 @@ import { useId } from 'react';
 import { DEFAULT_ASCII } from './ascii';
 import type { AsciiOptions } from './ascii';
 import type { Effects } from './effects';
-import { BLUR_LIMIT, rgbKey } from './filters';
+import { BLUR_LIMIT } from './filters';
+import { swatchSlots, toggleSlot } from './selection';
 import { hex, triplets } from './palettes';
 
 export function EffectOptions({
   effects,
   palette,
+  picking,
+  onPick,
+  pickDisabled,
   update,
 }: {
   effects: Effects;
   palette: number[];
+  picking: boolean;
+  onPick(): void;
+  pickDisabled?: boolean;
   update(value: Partial<Effects>): void;
 }) {
   const note = useId();
   const ascii = effects.ascii;
   const updateAscii = (value: Partial<AsciiOptions>) =>
     update({ ascii: { ...DEFAULT_ASCII, ...ascii, ...value } });
-  const available = [...new Set(triplets(palette).map(([r, g, b]) => rgbKey(r, g, b)))];
-  const remembered = effects.effectColours.filter((colour) => !available.includes(colour));
-  const selection = new Set(effects.effectColours);
+  const available = triplets(palette);
+  const selection = swatchSlots(effects.effectColours, available.length);
   return (
     <>
       <fieldset className="effect-block">
@@ -86,30 +92,38 @@ export function EffectOptions({
           </select>
         </label>
         <p id={note} className="field-note">
-          Targets blur, fringes and ASCII using exact colours from the converted palette. Blending
-          still controls where the original shows.
+          Targets curves, blur, fringes and ASCII. Selections follow the swatch position when you
+          change colours or palettes.
         </p>
         {effects.colourScope !== 'all' && (
           <>
+            <button
+              type="button"
+              className="text-button"
+              aria-pressed={picking}
+              onClick={onPick}
+              disabled={pickDisabled}
+            >
+              {picking ? 'Stop picking colours' : 'Pick colours on preview'}
+            </button>
+            {picking && (
+              <p className="field-note">Click a converted pixel to toggle its palette swatch.</p>
+            )}
             <div role="group" className="effect-swatches" aria-label="Colours for effect targeting">
-              {[...available, ...remembered].map((value) => {
-                const colour = hex([value >> 16, (value >> 8) & 255, value & 255]);
-                const checked = selection.has(value);
+              {available.map((rgb, slot) => {
+                const colour = hex(rgb);
+                const checked = selection.has(slot);
                 return (
                   <button
-                    key={value}
+                    key={slot}
                     type="button"
                     className="effect-swatch"
                     aria-label={colour}
                     aria-pressed={checked}
-                    title={
-                      remembered.includes(value) ? `${colour} · not in current palette` : colour
-                    }
+                    title={`Swatch ${slot + 1} · ${colour}`}
                     onClick={() =>
                       update({
-                        effectColours: checked
-                          ? effects.effectColours.filter((c) => c !== value)
-                          : [...effects.effectColours, value],
+                        effectColours: toggleSlot(effects.effectColours, slot, available.length),
                       })
                     }
                   >
@@ -122,18 +136,13 @@ export function EffectOptions({
             {!available.length && (
               <p className="field-note">Preview or convert to see the current palette.</p>
             )}
-            {remembered.length > 0 && (
-              <p className="field-note">
-                Selections absent from this palette are remembered by hex.
-              </p>
-            )}
             {effects.colourScope === 'only' && !selection.size && (
               <p className="field-note">Select a swatch to enable effects on it.</p>
             )}
             <button
               type="button"
               className="text-button"
-              disabled={!selection.size}
+              disabled={!effects.effectColours.length}
               onClick={() => update({ effectColours: [] })}
             >
               Clear colour selection

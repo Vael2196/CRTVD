@@ -338,3 +338,144 @@ test('ASCII and colour targeting reach GIF downloads without changing the loop o
   expect(gif.clip.info.duration).toBeCloseTo(0.2);
   expect(gif.clip.info.repeat).toBe(2);
 });
+
+test('preview picking toggles a palette slot and its curve persists through recolouring', async ({
+  page,
+}) => {
+  await image(page, 'contrast');
+  await importCode(page, 'CRTVD1:000000FFFFFF');
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByLabel('Apply effects to').selectOption('only');
+  await page.getByRole('button', { name: 'Pick colours on preview' }).click();
+  const targets = page.getByRole('group', { name: 'Colours for effect targeting' });
+  const preview = page.getByLabel('Converted image preview');
+  const click = async () => {
+    await expect(exportButton(page)).toBeEnabled();
+    const bounds = (await preview.boundingBox())!;
+    await preview.click({ position: { x: bounds.width * 0.77, y: bounds.height * 0.5 } });
+  };
+  await click();
+  await expect(targets.getByRole('button', { name: '#000000' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await click();
+  await expect(targets.getByRole('button', { name: '#000000' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  await click();
+  await page.getByRole('button', { name: 'Edit curves' }).click();
+  await page.getByLabel('Curve channel').selectOption('green');
+  await page.getByLabel('Output level').fill('128');
+  expect(pixel(await exportPng(page), 42, 12)).toEqual([0, 128, 0, 255]);
+  await editColour(page, '#000000', '#140020');
+  await expect(targets.getByRole('button', { name: '#140020' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(pixel(await exportPng(page), 42, 12)).toEqual([20, 128, 32, 255]);
+  await importCode(page, 'CRTVD1:150031FFFFFF');
+  await expect(targets.getByRole('button', { name: '#150031' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(pixel(await exportPng(page), 42, 12)).toEqual([21, 128, 49, 255]);
+});
+
+test('shaped masks and drawing on the preview use the same geometry in PNG export', async ({
+  page,
+}) => {
+  await image(page, 'white');
+  await importCode(page, 'CRTVD1:000000');
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByLabel('Blend with source').selectOption('hard');
+  await page.getByRole('button', { name: 'Rising diagonal' }).click();
+  const rising = await exportPng(page);
+  await page.getByRole('button', { name: 'Falling diagonal' }).click();
+  expect((await exportPng(page)).data).not.toEqual(rising.data);
+  await page.getByRole('combobox', { name: 'Blend shape', exact: true }).selectOption('ellipse');
+  const circle = await exportPng(page);
+  expect(pixel(circle, 32, 16)[0]).toBe(255);
+  expect(pixel(circle, 2, 2)[0]).toBe(0);
+  await page.getByRole('combobox', { name: 'Blend shape', exact: true }).selectOption('rectangle');
+  await page.getByLabel('Mask width').fill('70');
+  await page.getByLabel('Mask height').fill('30');
+  const rectangle = await exportPng(page);
+  await page.getByLabel('Mask rotation').fill('45');
+  expect((await exportPng(page)).data).not.toEqual(rectangle.data);
+  await page.getByRole('combobox', { name: 'Blend shape', exact: true }).selectOption('curve');
+  const curved = await exportPng(page);
+  await page.getByRole('button', { name: 'Curve bend handle' }).press('Shift+ArrowLeft');
+  expect((await exportPng(page)).data).not.toEqual(curved.data);
+  await page.getByRole('combobox', { name: 'Blend shape', exact: true }).selectOption('freehand');
+  const surface = page.getByRole('region', { name: 'Draw blend outline' });
+  await surface.scrollIntoViewIfNeeded();
+  const r = (await surface.boundingBox())!;
+  const move = (x: number, y: number) =>
+    page.mouse.move(r.x + x * r.width, r.y + y * r.height, { steps: 4 });
+  await move(0.27, 0.28);
+  await page.mouse.down();
+  await move(0.7, 0.28);
+  await move(0.7, 0.7);
+  await move(0.27, 0.7);
+  await move(0.27, 0.29);
+  await page.mouse.up();
+  const lasso = await exportPng(page);
+  expect(pixel(lasso, 32, 16)[0]).toBe(255);
+  expect(pixel(lasso, 4, 4)[0]).toBe(0);
+});
+
+test('animation picker can select a later GIF frame and transfers the resulting grade to export', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Animation', exact: true }).click();
+  const clip = fixtureGif(
+    [
+      { pixels: Array(128).fill(1), delay: 10 },
+      { pixels: Array(128).fill(3), delay: 20 },
+    ],
+    16,
+    8,
+  );
+  await page
+    .getByLabel('Upload animation')
+    .setInputFiles({ name: 'picker.gif', mimeType: 'image/gif', buffer: Buffer.from(clip) });
+  await expect(convertButton(page)).toBeEnabled();
+  await importCode(page, 'CRTVD1:FF00000000FF');
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByLabel('Apply effects to').selectOption('only');
+  await page.getByRole('button', { name: 'Pick colours on preview' }).click();
+  const timeline = page.getByLabel('Colour picking time');
+  await expect(timeline).toBeEnabled();
+  await timeline.fill('0.15');
+  await page.getByRole('button', { name: 'Show frame at 0.15 s' }).click();
+  const canvas = page.getByLabel('Converted first frame');
+  await expect(canvas).toBeVisible();
+  await expect(page.getByText('Showing 0.15 s', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      canvas.evaluate((c: HTMLCanvasElement) =>
+        Array.from(c.getContext('2d')!.getImageData(0, 0, 1, 1).data),
+      ),
+    )
+    .toEqual([0, 0, 255, 255]);
+  await canvas.click();
+  await expect(
+    page
+      .getByRole('group', { name: 'Colours for effect targeting' })
+      .getByRole('button', { name: '#0000FF' }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Stop picking colours' }).click();
+  await page.getByRole('button', { name: 'Edit curves' }).click();
+  await page.getByLabel('Curve channel').selectOption('green');
+  await page.getByLabel('Output level').fill('255');
+  await convertButton(page).click();
+  const gif = await exportGif(page);
+  expect(gif.frames.map((frame) => frame.slice(0, 4))).toEqual([
+    [255, 0, 0, 255],
+    [0, 255, 255, 255],
+  ]);
+  expect(gif.clip.info.duration).toBeCloseTo(0.3);
+});

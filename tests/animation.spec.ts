@@ -147,6 +147,20 @@ test('video input -> GIF and WebM output use real browser decoding and encoding'
   } finally {
     input.dispose();
   }
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByLabel('Apply effects to').selectOption('only');
+  await page.getByRole('button', { name: 'Pick colours on preview' }).click();
+  const time = page.getByLabel('Colour picking time');
+  await expect(time).toBeEnabled();
+  await time.fill('0.35');
+  await page.getByRole('button', { name: 'Show frame at 0.35 s' }).click();
+  await expect(page.getByText('Showing 0.35 s', { exact: true })).toBeVisible();
+  await page.getByLabel('Converted first frame').click();
+  await expect(
+    page
+      .getByRole('group', { name: 'Colours for effect targeting' })
+      .getByRole('button', { pressed: true }),
+  ).toHaveCount(1);
 });
 
 test('H.264 export pads odd height and is accepted again as MP4 input', async ({ page }) => {

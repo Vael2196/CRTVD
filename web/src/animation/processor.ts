@@ -2,6 +2,7 @@ import type { Processor, PaletteTrainer } from '@vael2196/crtvd';
 import type { ClipFrame } from './types';
 import type { Settings } from '../types';
 import { quantisationPalette, remapPalette } from '../palettes';
+import { slotIndex } from '../selection';
 import { effectEnabled, EffectRenderer } from '../effects';
 
 export class FrameProcessor {
@@ -44,15 +45,27 @@ export class FrameProcessor {
     this.trainer.dispose();
     this.trainer = undefined;
   }
-  process(frame: ClipFrame) {
+  process(frame: ClipFrame, picking = false) {
     const result = this.engine.processFrame(
       { data: frame.rgba, width: frame.width, height: frame.height },
       { ...this.options(), customPalette: this.palette },
     );
     let rgba = this.recolour(result.data);
-    if (this.effects) rgba = this.effects.apply(frame.rgba, frame.width, frame.height, rgba);
+    const slots = picking ? slotIndex(result.data, result.palette) : undefined;
+    if (this.effects)
+      rgba = this.effects.apply(
+        frame.rgba,
+        frame.width,
+        frame.height,
+        rgba,
+        result.data,
+        result.palette,
+        slots,
+      );
+    if (slots) this.effects?.hideSourceSlots(slots);
     return {
       rgba,
+      slots,
       palette: this.settings.paletteEdit
         ? Uint8Array.from(this.settings.paletteEdit.colours)
         : result.palette,

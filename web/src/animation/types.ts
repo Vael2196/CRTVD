@@ -26,18 +26,27 @@ export interface ClipFrame {
 }
 export interface ClipSource {
   info: ClipInfo;
+  frameAt?(seconds: number): Promise<ClipFrame>;
   frames(fps: number): AsyncGenerator<ClipFrame>;
   dispose(): void;
 }
 export type AnimationRequest =
   | { type: 'probe'; file: File }
   | { type: 'convert'; file: File; options: AnimationOptions }
-  | { type: 'preview'; file: File; options: AnimationOptions; trainedPalette?: number[] };
+  | {
+      type: 'preview';
+      file: File;
+      options: AnimationOptions;
+      trainedPalette?: number[];
+      sampleTime?: number;
+    };
 export type AnimationResponse =
   | { type: 'info'; info: ClipInfo }
   | {
       type: 'preview';
       rgba: ArrayBuffer;
+      slots: ArrayBuffer;
+      sampleTime?: number;
       width: number;
       height: number;
       palette: number[];

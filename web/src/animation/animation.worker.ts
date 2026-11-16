@@ -48,20 +48,52 @@ scope.onmessage = async ({ data }) => {
     const prepare = (frame: Parameters<FrameProcessor['process']>[0]) =>
       gif ? frame : flattenFrame(frame, o.matte);
     if (data.type === 'preview') {
-      for await (const frame of clip.frames(o.fps)) {
-        const result = processor.process(prepare(frame));
+      const sample = data.sampleTime;
+      const preview = (frame: Parameters<FrameProcessor['process']>[0]) => {
+        const result = processor!.process(prepare(frame), true);
         const rgba = result.rgba.buffer;
+        const slots = result.slots!.buffer;
         scope.postMessage(
           {
             type: 'preview',
             width,
             height,
             rgba,
+            slots,
+            sampleTime: sample,
             palette: Array.from(result.palette),
             originalPalette: Array.from(result.originalPalette),
           },
-          [rgba],
+          [rgba, slots],
         );
+      };
+      if (sample !== undefined && processor.needsTraining) {
+        let count = 0;
+        for await (const frame of clip.frames(o.fps)) {
+          if (++count > LIMITS.frames) throw new Error('The clip exceeds 900 frames.');
+          processor.train(prepare(frame));
+          if (count % 4 === 1)
+            scope.postMessage({
+              type: 'progress',
+              phase: 'palette',
+              frame: count,
+              fraction: Math.min(
+                1,
+                count / (clip.info.frameCount ?? Math.ceil(clip.info.duration * o.fps)),
+              ),
+            });
+        }
+        processor.finishTraining(settings.colours);
+      }
+      const time = Math.max(0, Math.min(clip.info.duration - 1e-6, sample ?? 0));
+      if (sample !== undefined && clip.frameAt) {
+        const at = Math.floor((time + 1e-7) * o.fps) / o.fps;
+        preview(await clip.frameAt(at));
+        return;
+      }
+      for await (const frame of clip.frames(o.fps)) {
+        if (time + 1e-7 >= frame.timestamp + frame.duration) continue;
+        preview(frame);
         return;
       }
       throw new Error('The clip contains no frames to preview.');

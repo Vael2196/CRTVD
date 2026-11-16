@@ -44,6 +44,13 @@ export async function openClip(file: File): Promise<ClipSource> {
         `Your browser cannot decode this ${codec} video. Try GIF or another supported browser.`,
       );
     const hasAudio = (await input.getAudioTracks()).length > 0;
+    const rgbaFrom = (canvas: HTMLCanvasElement | OffscreenCanvas) => {
+      if (canvas.width !== width || canvas.height !== height)
+        throw new Error('Variable-resolution videos are not supported.');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not read the decoded video frame.');
+      return ctx.getImageData(0, 0, width, height).data;
+    };
     return {
       info: {
         kind: 'video',
@@ -54,6 +61,18 @@ export async function openClip(file: File): Promise<ClipSource> {
         codec: codec!,
         hasAudio,
         repeat: 0,
+      },
+      async frameAt(seconds) {
+        const sink = new CanvasSink(track, { poolSize: 1, alpha: true });
+        const frame = await sink.getCanvas(start + seconds);
+        if (!frame) throw new Error('There is no decodable frame at this position.');
+        return {
+          rgba: rgbaFrom(frame.canvas),
+          width,
+          height,
+          timestamp: seconds,
+          duration: frame.duration,
+        };
       },
       async *frames(fps: number) {
         const count = Math.ceil(duration * fps - 1e-7);
@@ -67,14 +86,8 @@ export async function openClip(file: File): Promise<ClipSource> {
             throw new Error(
               `The video has no decodable frame at ${timestamps[index].toFixed(3)} seconds.`,
             );
-          const canvas = wrapped.canvas;
-          if (canvas.width !== width || canvas.height !== height)
-            throw new Error('Variable-resolution videos are not supported.');
-          const ctx = canvas.getContext('2d') as
-            CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
-          if (!ctx) throw new Error('Could not read the decoded video frame.');
           yield {
-            rgba: ctx.getImageData(0, 0, width, height).data,
+            rgba: rgbaFrom(wrapped.canvas),
             width,
             height,
             timestamp: index / fps,

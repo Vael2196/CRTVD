@@ -24,7 +24,9 @@ import {
 } from '../web/src/effects';
 import { recommended, retro } from '../web/src/presets';
 import { DEFAULT_ASCII } from '../web/src/ascii';
-import { rgbKey } from '../web/src/filters';
+import { curveLut } from '../web/src/curves';
+import { finishStroke, maskPolygon, outline } from '../web/src/maskGeometry';
+import type { Point } from '../web/src/maskGeometry';
 
 test('palette codes retain ordered RGB entries, reject malformed input and enforce GIF capacity', () => {
   assert.deepEqual(decodePalette(' CRTVD1:fe008a001177 '), [254, 0, 138, 0, 17, 119]);
@@ -257,8 +259,15 @@ test('all post-effects keep their scope tied to the original converted RGB', () 
   };
   const all = new EffectRenderer(w, h, e).apply(input, w, h, input);
   for (const colourScope of ['only', 'except'] as const) {
-    const settings = { ...e, colourScope, effectColours: [rgbKey(255, 0, 0)] };
-    const output = new EffectRenderer(w, h, settings).apply(input, w, h, input);
+    const settings = { ...e, colourScope, effectColours: [0] };
+    const output = new EffectRenderer(w, h, settings).apply(
+      input,
+      w,
+      h,
+      input,
+      input,
+      [255, 0, 0, 0, 0, 255],
+    );
     for (let y = 0; y < h; y++)
       for (let x = 0; x < w; x++) {
         const i = (y * w + x) * 4;
@@ -296,4 +305,126 @@ test('ASCII controls render deterministic glyphs, preserve alpha and can reverse
   assert.ok(inverted.slice(4).every((n, i) => n === (i % 4 === 3 ? 255 : 0)));
   assert.notDeepEqual(render({ custom: 'B' }), output);
   assert.notDeepEqual(render({ cell: 12, size: 0.5 }), output);
+});
+
+test('selected slot keeps its grade after palette replacement and identical visible swatches', () => {
+  const renderer = new EffectRenderer(3, 1, {
+    ...DEFAULT_EFFECTS,
+    colourScope: 'only',
+    effectColours: [0],
+    curves: {
+      green: [
+        [0, 255],
+        [255, 255],
+      ],
+    },
+  });
+  const rgb = Uint8Array.of(255, 0, 255, 128, 255, 0, 255, 255, 0, 0, 0, 0);
+  const before = Uint8Array.of(0, 255, 0, 128, 0, 0, 255, 255, 0, 0, 0, 0);
+  const out = renderer.apply(rgb, 3, 1, rgb, before, [0, 255, 0, 0, 0, 255]);
+  assert.deepEqual([...out], [255, 255, 255, 128, 255, 0, 255, 255, 0, 0, 0, 0]);
+  const replacement = Uint8Array.of(255, 0, 255, 128, 255, 0, 0, 255, 0, 0, 0, 0);
+  const replaced = renderer.apply(
+    replacement,
+    3,
+    1,
+    replacement,
+    replacement,
+    [255, 0, 255, 255, 0, 0],
+  );
+  assert.deepEqual([...replaced], [255, 255, 255, 128, 255, 0, 0, 255, 0, 0, 0, 0]);
+});
+
+test('curves interpolate through points without overshoot and combine master and channel', () => {
+  const identity = curveLut();
+  assert.ok(identity.every((x, i) => x === i));
+  const samples = curveLut([
+    [0, 16],
+    [60, 190],
+    [220, 100],
+    [255, 223],
+  ]);
+  assert.deepEqual([samples[0], samples[60], samples[220], samples[255]], [16, 190, 100, 223]);
+  assert.ok(samples.slice(60, 220).every((v) => v >= 100 && v <= 190));
+  const rgb = Uint8Array.of(128, 128, 128, 87);
+  const result = new EffectRenderer(1, 1, {
+    ...DEFAULT_EFFECTS,
+    curves: {
+      rgb: [
+        [0, 0],
+        [128, 220],
+        [255, 255],
+      ],
+      red: [
+        [0, 0],
+        [220, 40],
+        [255, 255],
+      ],
+    },
+  }).apply(rgb, 1, 1, rgb);
+  assert.deepEqual([...result], [40, 220, 220, 87]);
+});
+
+test('blend shape boundaries cover the expected pixels and swap original and edited', () => {
+  const w = 64,
+    h = 32,
+    a = solid(w, h, [255, 0, 0, 255]),
+    b = solid(w, h, [0, 0, 255, 255]);
+  const render = (settings: Partial<typeof DEFAULT_EFFECTS>) =>
+    new EffectRenderer(w, h, { ...DEFAULT_EFFECTS, blend: 'hard', ...settings }).apply(a, w, h, b);
+  const red = (buf: Uint8Array, x: number, y: number) => buf[(y * w + x) * 4];
+  const ellipse = render({ shape: 'ellipse' });
+  assert.equal(red(ellipse, 32, 16), 255);
+  assert.equal(red(ellipse, 4, 4), 0);
+  assert.equal(red(render({ shape: 'ellipse', flip: true }), 32, 16), 0);
+  const [right] = outline({ ...DEFAULT_EFFECTS, shape: 'ellipse' }, w, h);
+  assert.ok(Math.abs((right[0] - 0.5) * w - 8.8) < 1e-6);
+  const rect = render({ shape: 'rectangle', span: [0.6, 0.2] });
+  const turned = render({ shape: 'rectangle', span: [0.6, 0.2], angle: 90 });
+  assert.equal(red(rect, 47, 16), 255);
+  assert.equal(red(turned, 47, 16), 0);
+  assert.equal(red(turned, 32, 4), 255);
+  const curve = render({ shape: 'curve', bow: [0.9, 0.5] });
+  assert.equal(red(curve, 39, 16), 255);
+  assert.equal(red(curve, 39, 0), 0);
+  assert.equal(red(render({ a: 0, b: 0.5 }), 12, 27), 255);
+  assert.equal(red(render({ a: 0, b: 0.5 }), 48, 3), 0);
+});
+
+test('freehand closes near its endpoint or projects onto the nearest perimeter', () => {
+  const enclosed: Point[] = [
+    [0.4, 0.3],
+    [0.7, 0.3],
+    [0.7, 0.65],
+    [0.45, 0.6],
+    [0.4, 0.31],
+  ];
+  assert.deepEqual(finishStroke(enclosed, 100, 100), enclosed);
+  const open: Point[] = [
+    [0.02, 0.4],
+    [0.4, 0.5],
+    [0.03, 0.65],
+  ];
+  const stroke = finishStroke(open, 100, 100);
+  assert.deepEqual(
+    stroke.slice(3).map(([x, y]) => [x, Math.round(y * 100) / 100]),
+    [
+      [0, 0.65],
+      [0, 0.4],
+    ],
+  );
+  assert.deepEqual(
+    maskPolygon({ ...DEFAULT_EFFECTS, shape: 'freehand', stroke }, 100, 100),
+    stroke,
+  );
+  const a = solid(30, 30, [255, 0, 0, 255]),
+    b = solid(30, 30, [0, 0, 255, 255]);
+  const result = new EffectRenderer(30, 30, {
+    ...DEFAULT_EFFECTS,
+    shape: 'freehand',
+    stroke,
+    blend: 'hard',
+  }).apply(a, 30, 30, b);
+  assert.equal(result[(15 * 30 + 2) * 4], 255);
+  assert.equal(result[(15 * 30 + 20) * 4], 0);
 });

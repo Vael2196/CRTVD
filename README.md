@@ -44,8 +44,8 @@ media upload or account required.
 - **Editable, shareable palettes.** Replace a swatch without changing the dither pattern, try
   Soft Club, 90s anime and retro console presets, or copy a palette code between projects.
 - **Source blends and lens effects.** Drag either end of a split to blend the source and
-  conversion. Add blur, chromatic aberration, purple fringing or ASCII glyphs to stills and
-  animations, with the option to target or protect individual palette colours.
+  conversion, or draw a mask. Add RGB curves, blur, chromatic aberration, purple fringing or
+  ASCII glyphs, with the option to target or protect palette colours directly in the preview.
 - **Useful exports.** Save transparent PNGs at their processing size or an integer pixel scale.
   Export animations as GIF, WebM or MP4 where the browser supports the required codecs.
 - **An interface with an earlier-web feel.** Bevelled panels, blue title bars, a tiled navy

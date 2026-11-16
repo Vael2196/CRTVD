@@ -2,6 +2,7 @@ import { createProcessor } from '@vael2196/crtvd';
 import type { Processor, Frame, ProcessedFrame } from '@vael2196/crtvd';
 import { quantisationPalette, remapPalette } from './palettes';
 import { effectEnabled, EffectRenderer } from './effects';
+import { slotIndex } from './selection';
 import type { WorkerRequest, WorkerResponse } from './types';
 const worker = self as unknown as {
   location: Location;
@@ -67,13 +68,23 @@ worker.onmessage = ({ data }) => {
         };
       const result = cached.result;
       let pixels = remapPalette(o.paletteEdit)(result.data);
-      if (effectEnabled(o.effects))
-        pixels = new EffectRenderer(width, height, o.effects).apply(
+      const slots =
+        o.effects && o.effects.colourScope !== 'all'
+          ? slotIndex(result.data, result.palette)
+          : undefined;
+      if (effectEnabled(o.effects)) {
+        const renderer = new EffectRenderer(width, height, o.effects);
+        pixels = renderer.apply(
           source.frame.data,
           source.frame.width,
           source.frame.height,
           pixels,
+          result.data,
+          result.palette,
+          slots,
         );
+        if (slots) renderer.hideSourceSlots(slots);
+      }
       // The cache owns the original conversion; transfer only a fresh buffer.
       const rgba = (pixels === result.data ? pixels.slice() : pixels).buffer;
       worker.postMessage(
@@ -84,11 +95,12 @@ worker.onmessage = ({ data }) => {
           width: result.width,
           height: result.height,
           rgba,
+          slots: slots?.buffer,
           palette: o.paletteEdit?.colours ?? Array.from(result.palette),
           originalPalette: Array.from(result.palette),
           milliseconds: performance.now() - started,
         },
-        [rgba],
+        slots ? [rgba, slots.buffer] : [rgba],
       );
     })
     .catch((error) =>

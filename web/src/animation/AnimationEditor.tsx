@@ -10,6 +10,7 @@ import { snapshotFile, isCancelled } from '../uploads';
 import { AdvancedSettings, BlendHandles } from '../AdvancedTools';
 import { PalettePanel, PresetGallery } from '../PaletteTools';
 import { clearPaletteChanges, editSwatch } from '../palettes';
+import { pickSlot, toggleSlot } from '../selection';
 import { DEFAULT_EFFECTS, effectEnabled } from '../effects';
 
 type FirstFrame = Extract<AnimationResponse, { type: 'preview' }>;
@@ -28,6 +29,9 @@ export function AnimationEditor() {
   const [source, setSource] = useState<{ file: File; info: ClipInfo; url: string } | null>(null);
   const [options, setOptions] = useState<AnimationOptions>(defaults);
   const [output, setOutput] = useState<Converted | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [pickTime, setPickTime] = useState(0);
+  const video = useRef<HTMLVideoElement>(null);
   const [firstFrame, setFirstFrame] = useState<FirstFrame | null>(null);
   const [paletteReference, setPaletteReference] = useState<PaletteReference | null>(null);
   const learnedPalette = useRef<{ key: string; colours: number[] } | null>(null);
@@ -96,6 +100,8 @@ export function AnimationEditor() {
     setOutput(null);
     setFirstFrame(null);
     setPaletteReference(null);
+    setPicking(false);
+    setPickTime(0);
     learnedPalette.current = null;
     try {
       const owned = await snapshotFile(file, 'animation', controller.signal);
@@ -124,7 +130,12 @@ export function AnimationEditor() {
     e.preventDefault();
     void load(e.dataTransfer.files[0]);
   };
-  const convert = async (next = options, previewOnly = false) => {
+  const convert = async (
+    next = options,
+    previewOnly = false,
+    sampleTime?: number,
+    click?: [number, number],
+  ): Promise<void> => {
     if (!source) return;
     setOutput(null);
     setError('');
@@ -137,6 +148,7 @@ export function AnimationEditor() {
           ? {
               ...request,
               type: 'preview',
+              sampleTime,
               trainedPalette: learned?.key === key ? learned.colours : undefined,
             }
           : { ...request, type: 'convert' },
@@ -148,7 +160,29 @@ export function AnimationEditor() {
         originalPalette: answer.originalPalette,
       });
       if (answer.type === 'preview') {
+        const s = next.settings;
+        if (
+          sampleTime !== undefined &&
+          s.palette === 'adaptive' &&
+          !s.paletteEdit &&
+          !s.importedPalette &&
+          !s.customPalette
+        )
+          learnedPalette.current = { key, colours: answer.originalPalette };
         setFirstFrame(answer);
+        if (click) {
+          const fx = next.settings.effects ?? DEFAULT_EFFECTS;
+          const slot = pickSlot(answer.slots, answer.width, answer.height, ...click);
+          const effectColours = toggleSlot(fx.effectColours, slot, answer.palette.length / 3);
+          if (effectColours !== fx.effectColours) {
+            const updated = {
+              ...next,
+              settings: { ...next.settings, effects: { ...fx, effectColours } },
+            };
+            setOptions(updated);
+            await convert(updated, true, sampleTime);
+          }
+        }
         return;
       }
       const s = next.settings;
@@ -192,8 +226,20 @@ export function AnimationEditor() {
     setOptions(next);
     setPaletteReference(null);
     setError('');
-    if (output) void convert(next);
+    if (picking) void convert(next, true, pickTime);
+    else if (output) void convert(next);
     else if (firstFrame) void convert(next, true);
+  };
+  const startPicking = (at = video.current?.currentTime ?? 0, click?: [number, number]) => {
+    if (!source) return;
+    const time = Math.max(0, Math.min(source.info.duration - 1e-6, at));
+    setPicking(true);
+    setPickTime(time);
+    void convert(options, true, time, click);
+  };
+  const changeEffects = (next: typeof effects) => {
+    if (next.colourScope === 'all') setPicking(false);
+    setting('effects', next);
   };
   const stageLabel =
     progress?.phase === 'palette'
@@ -238,6 +284,7 @@ export function AnimationEditor() {
                 setOptions({ ...defaults, settings: { ...DEFAULT_SETTINGS } });
                 setOutput(null);
                 setFirstFrame(null);
+                setPicking(false);
                 setPaletteReference(null);
                 setError('');
               }}
@@ -430,8 +477,14 @@ export function AnimationEditor() {
           <AdvancedSettings
             effects={effects}
             palette={palette}
+            picking={picking}
+            onPick={() => {
+              if (picking) setPicking(false);
+              else startPicking();
+            }}
+            pickDisabled={!source}
             disabled={busy || loading}
-            change={(next) => setting('effects', next)}
+            change={changeEffects}
           />
         </aside>
         <div className="preview-panel animation-preview">
@@ -490,14 +543,43 @@ export function AnimationEditor() {
               )}
             </figure>
             <figure>
-              <figcaption>{firstFrame && !output ? 'FIRST FRAME PREVIEW' : 'CONVERTED'}</figcaption>
+              <figcaption>
+                {picking
+                  ? 'COLOUR PICKING FRAME'
+                  : firstFrame && !output
+                    ? 'FIRST FRAME PREVIEW'
+                    : 'CONVERTED'}
+              </figcaption>
               {output ? (
                 output.extension === 'gif' ? (
                   <img src={output.url} alt="Converted animation" />
                 ) : (
                   <video
+                    ref={video}
                     src={output.url}
                     aria-label="Converted video"
+                    className={effects.colourScope !== 'all' ? 'colour-picking' : undefined}
+                    onClick={(event) => {
+                      if (effects.colourScope === 'all' || busy || loading) return;
+                      const target = event.currentTarget;
+                      const r = target.getBoundingClientRect();
+                      // Leave the native playback bar to the video controls.
+                      if (event.clientY > r.bottom - 42) return;
+                      const scale = Math.min(
+                        (r.width - 4) / output.width,
+                        (r.height - 4) / output.height,
+                      );
+                      const x =
+                        (event.clientX - r.left - (r.width - output.width * scale) / 2) /
+                        (size.width * scale);
+                      const y =
+                        (event.clientY - r.top - (r.height - output.height * scale) / 2) /
+                        (size.height * scale);
+                      if (x < 0 || x >= 1 || y < 0 || y >= 1) return;
+                      const time = target.currentTime;
+                      target.pause();
+                      startPicking(time, [x, y]);
+                    }}
                     controls
                     muted
                     playsInline
@@ -507,7 +589,30 @@ export function AnimationEditor() {
               ) : firstFrame ? (
                 <canvas
                   ref={previewCanvas}
-                  className="clip-preview-canvas"
+                  className={`clip-preview-canvas ${picking ? 'colour-picking' : ''}`}
+                  onClick={(event) => {
+                    if (!picking || busy || firstFrame.sampleTime !== pickTime) return;
+                    const r = event.currentTarget.getBoundingClientRect();
+                    const slot = pickSlot(
+                      firstFrame.slots,
+                      firstFrame.width,
+                      firstFrame.height,
+                      (event.clientX - r.left) / r.width,
+                      (event.clientY - r.top) / r.height,
+                    );
+                    const effectColours = toggleSlot(
+                      effects.effectColours,
+                      slot,
+                      firstFrame.palette.length / 3,
+                    );
+                    if (effectColours === effects.effectColours) return;
+                    const next = {
+                      ...options,
+                      settings: { ...s, effects: { ...effects, effectColours } },
+                    };
+                    setOptions(next);
+                    void convert(next, true, pickTime);
+                  }}
                   aria-label="Converted first frame"
                   width={firstFrame.width}
                   height={firstFrame.height}
@@ -521,6 +626,40 @@ export function AnimationEditor() {
               )}
             </figure>
           </div>
+          {picking && source && (
+            <div className="pick-timeline">
+              <label className="advanced-field">
+                Colour picking time
+                <input
+                  type="range"
+                  min={0}
+                  max={source.info.duration}
+                  step="any"
+                  value={pickTime}
+                  disabled={busy || loading}
+                  onChange={(event) => setPickTime(+event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={busy || loading}
+                onClick={() => void convert(options, true, pickTime)}
+              >
+                Show frame at {pickTime.toFixed(2)} s
+              </button>
+              <span className="field-note pick-frame-time" role="status">
+                {busy
+                  ? 'Preparing frame…'
+                  : firstFrame?.sampleTime !== undefined
+                    ? `Showing ${firstFrame.sampleTime.toFixed(2)} s`
+                    : 'No frame selected'}
+              </span>
+              <p className="field-note">
+                Choose a time, show the frame, then click its converted colours.
+              </p>
+            </div>
+          )}
           {source && (
             <div className="image-meta">
               <span className="filename" title={source.file.name}>
@@ -596,7 +735,7 @@ export function AnimationEditor() {
               applyPalette({ ...s, importedPalette: colours, paletteEdit: undefined })
             }
           />
-          {firstFrame && (
+          {firstFrame && !picking && (
             <p className="field-note preview-note">
               First frame only. Before the full clip is analysed, an adaptive preview estimates its
               palette from this frame. GIF may simplify effect colours during export.
@@ -634,14 +773,20 @@ export function AnimationEditor() {
                     type="button"
                     className="secondary-button"
                     disabled={!source}
-                    onClick={() => void convert(options, true)}
+                    onClick={() => {
+                      setPicking(false);
+                      void convert(options, true);
+                    }}
                   >
                     Preview first frame
                   </button>
                   <button
                     className="primary-button"
                     disabled={!source}
-                    onClick={() => void convert()}
+                    onClick={() => {
+                      setPicking(false);
+                      void convert();
+                    }}
                   >
                     Convert animation<span aria-hidden="true">→</span>
                   </button>

@@ -3,15 +3,23 @@ import type { PointerEvent } from 'react';
 import { DEFAULT_EFFECTS, edgePoint, nearestEdge, separateEndpoint } from './effects';
 import type { Effects } from './effects';
 import { EffectOptions } from './EffectOptions';
+import { MaskOptions, MaskOverlay } from './MaskTools';
+import { CurveEditor } from './CurveEditor';
 
 export function AdvancedSettings({
   effects = DEFAULT_EFFECTS,
   palette,
+  picking,
+  onPick,
+  pickDisabled,
   change,
   disabled,
 }: {
   effects?: Effects;
   palette: number[];
+  picking: boolean;
+  onPick(): void;
+  pickDisabled?: boolean;
   change(effects: Effects): void;
   disabled?: boolean;
 }) {
@@ -44,36 +52,7 @@ export function AdvancedSettings({
                 <option value="pyramid">Pyramid blend</option>
               </select>
             </label>
-            {effects.blend !== 'off' && (
-              <>
-                <p className="field-note">
-                  Drag either endpoint around the image edge to place the seam.
-                </p>
-                <div className="seam-actions">
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => update({ a: 0.125, b: 0.625 })}
-                  >
-                    Vertical seam
-                  </button>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => update({ a: 0.375, b: 0.875 })}
-                  >
-                    Horizontal seam
-                  </button>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => update({ flip: !effects.flip })}
-                  >
-                    Swap sides
-                  </button>
-                </div>
-              </>
-            )}
+            {effects.blend !== 'off' && <MaskOptions effects={effects} update={update} />}
             {effects.blend === 'feather' && (
               <label className="advanced-field">
                 Feather width
@@ -115,7 +94,15 @@ export function AdvancedSettings({
                 onChange={(e) => update({ purple: +e.target.value / 100 })}
               />
             </label>
-            <EffectOptions effects={effects} palette={palette} update={update} />
+            <EffectOptions
+              effects={effects}
+              palette={palette}
+              update={update}
+              picking={picking}
+              onPick={onPick}
+              pickDisabled={pickDisabled}
+            />
+            <CurveEditor curves={effects.curves} change={(curves) => update({ curves })} />
             <button type="button" className="text-button" onClick={() => change(DEFAULT_EFFECTS)}>
               Reset effects
             </button>
@@ -135,6 +122,7 @@ export function BlendHandles({
   change(effects: Effects): void;
   disabled?: boolean;
 }) {
+  const edgeHandles = effects.shape === 'line' || effects.shape === 'curve';
   const [ax, ay] = edgePoint(effects.a),
     [bx, by] = edgePoint(effects.b);
   const set = (which: 'a' | 'b', position: number) =>
@@ -154,57 +142,64 @@ export function BlendHandles({
   return (
     <div className="blend-handles" role="group" aria-label="Blend divider">
       <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <line
-          x1={ax * 100}
-          y1={ay * 100}
-          x2={bx * 100}
-          y2={by * 100}
-          vectorEffect="non-scaling-stroke"
-        />
+        {effects.shape === 'line' && (
+          <line
+            x1={ax * 100}
+            y1={ay * 100}
+            x2={bx * 100}
+            y2={by * 100}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
       </svg>
-      {(['a', 'b'] as const).map((which, i) => {
-        const [x, y] = edgePoint(effects[which]);
-        return (
-          <button
-            type="button"
-            role="slider"
-            aria-label={`Blend endpoint ${which.toUpperCase()}`}
-            aria-valuemin={0}
-            aria-valuemax={999}
-            aria-valuenow={Math.min(999, Math.round(effects[which] * 1000))}
-            aria-valuetext={`${Math.round(effects[which] * 100)}% around the edge`}
-            className="blend-endpoint"
-            key={which}
-            disabled={disabled}
-            style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              move(which, e);
-            }}
-            onPointerMove={(e) => {
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) move(which, e);
-            }}
-            onKeyDown={(e) => {
-              if (
-                ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)
-              ) {
-                e.preventDefault();
-                const step = e.shiftKey ? 0.06 : 0.0125;
-                set(
-                  which,
-                  e.key === 'Home'
-                    ? 0
-                    : e.key === 'End'
-                      ? 0.999
-                      : effects[which] + (['ArrowUp', 'ArrowRight'].includes(e.key) ? step : -step),
-                );
-              }
-            }}
-          >
-            {i ? 'B' : 'A'}
-          </button>
-        );
-      })}
+      {effects.shape !== 'line' && (
+        <MaskOverlay effects={effects} change={change} disabled={disabled} />
+      )}
+      {edgeHandles &&
+        (['a', 'b'] as const).map((which, i) => {
+          const [x, y] = edgePoint(effects[which]);
+          return (
+            <button
+              type="button"
+              role="slider"
+              aria-label={`Blend endpoint ${which.toUpperCase()}`}
+              aria-valuemin={0}
+              aria-valuemax={999}
+              aria-valuenow={Math.min(999, Math.round(effects[which] * 1000))}
+              aria-valuetext={`${Math.round(effects[which] * 100)}% around the edge`}
+              className="blend-endpoint"
+              key={which}
+              disabled={disabled}
+              style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                move(which, e);
+              }}
+              onPointerMove={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) move(which, e);
+              }}
+              onKeyDown={(e) => {
+                if (
+                  ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)
+                ) {
+                  e.preventDefault();
+                  const step = e.shiftKey ? 0.06 : 0.0125;
+                  set(
+                    which,
+                    e.key === 'Home'
+                      ? 0
+                      : e.key === 'End'
+                        ? 0.999
+                        : effects[which] +
+                          (['ArrowUp', 'ArrowRight'].includes(e.key) ? step : -step),
+                  );
+                }
+              }}
+            >
+              {i ? 'B' : 'A'}
+            </button>
+          );
+        })}
     </div>
   );
 }
