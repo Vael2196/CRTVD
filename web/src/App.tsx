@@ -195,8 +195,9 @@ function StillImageEditor() {
             <em>A whole different feeling.</em>
           </h1>
           <p className="intro-copy">
-            Small resolutions, considered palettes, a touch of dither.
-            <br className="desktop-break" /> Make something worth looking at, one pixel at a time.
+            CRTVD converts images, animated GIFs and short videos into retro
+            pixel art with dithering and limited colour palettes. Files are
+            processed in your browser.
           </p>
         </div>
         <div className="edition">
@@ -614,6 +615,8 @@ function StillImageEditor() {
           <b>PNG / GIF / VIDEO</b>
         </span>
         <span>
+          <a href="https://vaell.dev/projects/crtvd/">About CRTVD</a>
+          {' · '}
           <a href={`${import.meta.env.BASE_URL}benchmarks.html`}>Benchmarks</a> · v0.3
         </span>
       </footer>
