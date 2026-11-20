@@ -6,12 +6,16 @@ export type ProcessedImage = Extract<WorkerResponse, { type: 'result' }>;
 
 export function useEngine(source: SourceImage | null, settings: Settings) {
   const [ready, setReady] = useState(false);
-  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<ProcessedImage | null>(null);
+  const [completed, setCompleted] = useState<{
+    source: SourceImage;
+    settings: Settings;
+    result: ProcessedImage;
+  } | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const generation = useRef(0);
-  const desiredId = useRef(0);
+  const nextId = useRef(0);
+  const desired = useRef<{ id: number; source: SourceImage; settings: Settings } | null>(null);
   const sourceReady = useRef(false);
   const inFlight = useRef(false);
   const pending = useRef<Extract<WorkerRequest, { type: 'process' }> | null>(null);
@@ -41,9 +45,9 @@ export function useEngine(source: SourceImage | null, settings: Settings) {
       }
       if (data.type === 'result') {
         inFlight.current = false;
-        if (data.generation === generation.current && data.id === desiredId.current) {
-          setResult(data);
-          setProcessing(false);
+        const request = desired.current;
+        if (data.generation === generation.current && request?.id === data.id) {
+          setCompleted({ source: request.source, settings: request.settings, result: data });
           setError('');
         }
         dispatch.current();
@@ -55,16 +59,14 @@ export function useEngine(source: SourceImage | null, settings: Settings) {
       if (
         data.generation === undefined ||
         (data.generation === generation.current &&
-          (data.id === undefined || data.id === desiredId.current))
+          (data.id === undefined || data.id === desired.current?.id))
       ) {
         setError(data.message);
-        setProcessing(false);
       }
       dispatch.current();
     };
     worker.onerror = () => {
       setError('The image engine stopped unexpectedly. Reload the page to restart it.');
-      setProcessing(false);
       setReady(false);
     };
     return () => {
@@ -78,7 +80,7 @@ export function useEngine(source: SourceImage | null, settings: Settings) {
     generation.current += 1;
     sourceReady.current = false;
     pending.current = null;
-    setResult(null);
+    setCompleted(null);
     setError('');
     const pixels = source.canvas.getContext('2d')!.getImageData(0, 0, source.width, source.height);
     const rgba = pixels.data.buffer as ArrayBuffer;
@@ -94,9 +96,9 @@ export function useEngine(source: SourceImage | null, settings: Settings) {
 
   useEffect(() => {
     if (!source || !ready) return;
-    const id = ++desiredId.current;
+    const id = ++nextId.current;
+    desired.current = { id, source, settings };
     pending.current = null;
-    setProcessing(true);
     setError('');
     // Only one request runs at a time. Rapid control changes replace the queued
     // request; a generation/id check prevents stale results being displayed.
@@ -115,5 +117,10 @@ export function useEngine(source: SourceImage | null, settings: Settings) {
     return () => clearTimeout(timer);
   }, [source, ready, settings]);
 
-  return { ready, processing, error, result };
+  const result = completed?.source === source ? completed.result : null;
+  // Keep displaying the previous preview while the worker catches up, but only
+  // allow downloads for the source and settings in this render.
+  const currentResult = ready && completed?.settings === settings ? result : null;
+  const processing = !!source && ready && !currentResult && !error;
+  return { ready, processing, error, result, currentResult };
 }

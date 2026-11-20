@@ -3,7 +3,7 @@ import type { Layer } from './layers';
 import { LayerTools, layerControls } from './LayerTools';
 import { edgeRaster } from './edgeTrace';
 import { pickSlot, toggleSlot } from './selection';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, CSSProperties } from 'react';
 import { decodeImage, demoImage, downloadPng, maxOutputWidth, outputSize } from './media';
 import { DEFAULT_SETTINGS } from './types';
@@ -50,11 +50,10 @@ function StillImageEditor() {
   const fileInput = useRef<HTMLInputElement>(null);
   const originalCanvas = useRef<HTMLCanvasElement>(null);
   const previewCanvas = useRef<HTMLCanvasElement>(null);
-  const nativeCanvas = useRef<HTMLCanvasElement | null>(null);
   const loadId = useRef(0);
   const reading = useRef<AbortController | null>(null);
   useEffect(() => () => reading.current?.abort(), []);
-  const { ready, processing, error, result } = useEngine(source, settings);
+  const { ready, processing, error, result, currentResult } = useEngine(source, settings);
 
   useEffect(() => {
     setSource(demoImage());
@@ -67,14 +66,9 @@ function StillImageEditor() {
     canvas.height = Math.max(1, Math.round((canvas.width * source.height) / source.width));
     canvas.getContext('2d')!.drawImage(source.canvas, 0, 0, canvas.width, canvas.height);
   }, [source]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!result || !previewCanvas.current) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = result.width;
-    canvas.height = result.height;
     const pixels = new Uint8ClampedArray(result.rgba);
-    canvas.getContext('2d')!.putImageData(new ImageData(pixels, result.width, result.height), 0, 0);
-    nativeCanvas.current = canvas;
     const preview = previewCanvas.current;
     preview.width = result.width;
     preview.height = result.height;
@@ -164,14 +158,14 @@ function StillImageEditor() {
     settings.customPalette
   );
   const exportImage = async () => {
-    if (!nativeCanvas.current || !result) return;
+    if (!currentResult || loading || exporting || error) return;
     setExporting(true);
     setLoadError('');
     const stem = (source?.name.replace(/\.[^.]+$/, '') || 'image').replace(/[^a-zA-Z0-9_-]+/g, '-');
     try {
       await downloadPng(
-        nativeCanvas.current,
-        `${stem}-crtvd-${result.width * scale}x${result.height * scale}.png`,
+        currentResult,
+        `${stem}-crtvd-${currentResult.width * scale}x${currentResult.height * scale}.png`,
         scale,
       );
     } catch (e) {
@@ -453,8 +447,7 @@ function StillImageEditor() {
                       effects.colourScope === 'all' ||
                       (!picking && effects.shape === 'freehand' && effects.blend !== 'off') ||
                       view === 'original' ||
-                      processing ||
-                      !result?.slots
+                      !currentResult?.slots
                     )
                       return;
                     const bounds = event.currentTarget.getBoundingClientRect();
@@ -464,16 +457,16 @@ function StillImageEditor() {
                     )
                       return;
                     const slot = pickSlot(
-                      result.slots,
-                      result.width,
-                      result.height,
+                      currentResult.slots,
+                      currentResult.width,
+                      currentResult.height,
                       (event.clientX - bounds.left) / bounds.width,
                       (event.clientY - bounds.top) / bounds.height,
                     );
                     const effectColours = toggleSlot(
                       effects.effectColours,
                       slot,
-                      result.palette.length / 3,
+                      currentResult.palette.length / 3,
                     );
                     if (effectColours !== effects.effectColours)
                       changeEffects({ ...effects, effectColours });
@@ -591,7 +584,7 @@ function StillImageEditor() {
               </select>
               <button
                 className="primary-button"
-                disabled={!result || processing || loading || exporting || !!error}
+                disabled={!currentResult || loading || exporting || !!error}
                 onClick={() => void exportImage()}
               >
                 {exporting ? 'Exporting…' : 'Export PNG'}

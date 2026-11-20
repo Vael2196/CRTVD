@@ -365,9 +365,17 @@ test('preview picking toggles a palette slot and its curve persists through reco
     'false',
   );
   await click();
+  await expect(targets.getByRole('button', { name: '#000000' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.getByRole('button', { name: 'Edit curves' }).click();
   await page.getByLabel('Curve channel').selectOption('green');
-  await page.getByLabel('Output level').fill('128');
+  const level = page.getByLabel('Output level');
+  const colours = page.getByRole('group', { name: 'Colours in the preview' });
+  await level.fill('128');
+  await expect(level).toHaveValue('128');
+  await expect(colours.getByRole('img', { name: '#008000', exact: true })).toBeVisible();
   expect(pixel(await exportPng(page), 42, 12)).toEqual([0, 128, 0, 255]);
   await editColour(page, '#000000', '#140020');
   await expect(targets.getByRole('button', { name: '#140020' })).toHaveAttribute(

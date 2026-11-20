@@ -189,13 +189,24 @@ export function outputSize(source: SourceImage, targetWidth: number) {
   return { width, height };
 }
 
-export async function downloadPng(canvas: HTMLCanvasElement, filename: string, scale: number) {
-  const output = document.createElement('canvas');
-  output.width = canvas.width * scale;
-  output.height = canvas.height * scale;
-  const ctx = output.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(canvas, 0, 0, output.width, output.height);
+export async function downloadPng(
+  { rgba, width, height }: { rgba: ArrayBuffer; width: number; height: number },
+  filename: string,
+  scale: number,
+) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const pixels = new ImageData(new Uint8ClampedArray(rgba), width, height);
+  canvas.getContext('2d')!.putImageData(pixels, 0, 0);
+  const output = scale === 1 ? canvas : document.createElement('canvas');
+  if (scale !== 1) {
+    output.width = width * scale;
+    output.height = height * scale;
+    const ctx = output.getContext('2d')!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(canvas, 0, 0, output.width, output.height);
+  }
   const blob = await new Promise<Blob>((resolve, reject) =>
     output.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG export failed.'))), 'image/png'),
   );
