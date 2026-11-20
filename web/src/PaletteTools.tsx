@@ -1,3 +1,5 @@
+import { averageColours, organisePalette, shiftGroup } from './paletteGroups';
+import type { PreviewColours } from './layers';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, ReactNode } from 'react';
 import {
@@ -292,12 +294,44 @@ function PaletteCode({
   );
 }
 
+function OutputPalette({ visible }: { visible?: PreviewColours }) {
+  if (!visible) return null;
+  return (
+    <div className="output-colours" role="group" aria-label="Colours in the preview">
+      <strong>COLOURS IN THE PREVIEW</strong>
+      {(['original', 'converted', 'mixed'] as const).map((group) =>
+        visible[group].length ? (
+          <div key={group} className={`output-colour-row ${group}`}>
+            <span>
+              {group === 'original' ? 'Original' : group === 'converted' ? 'Converted' : 'Mixed'}
+            </span>
+            <div>
+              {triplets(visible[group]).map((rgb) => (
+                <span
+                  key={hex(rgb)}
+                  className="live-swatch"
+                  title={hex(rgb)}
+                  aria-label={hex(rgb)}
+                  role="img"
+                  style={{ background: hex(rgb) }}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
 export function PalettePanel({
   colours,
   altered,
   disabled,
   max = 256,
   onEdit,
+  visible,
+  onBatch,
   onDefault,
   onImport,
 }: {
@@ -306,34 +340,115 @@ export function PalettePanel({
   disabled?: boolean;
   max?: number;
   onEdit(index: number, rgb: RGB): void;
+  visible?: PreviewColours;
+  onBatch(edits: { slot: number; rgb: RGB }[]): void;
   onDefault(): void;
   onImport(colours: number[]): void;
 }) {
+  const [organised, setOrganised] = useState(false);
+  const [count, setCount] = useState(4);
+  const [checked, setChecked] = useState<number[]>([]);
+  const [group, editGroup] = useState<number[] | null>(null);
+  const [average, setAverage] = useState(false);
   const [popup, setPopup] = useState<number | 'code' | null>(null);
   const palette = useMemo(() => triplets(colours), [colours]);
   const close = () => setPopup(null);
+  const groups = useMemo(
+    () => (organised ? organisePalette(palette, count) : []),
+    [palette, count, organised],
+  );
+  const selected = checked.filter((i) => i < palette.length);
   return (
     <div className="palette-panel">
+      <OutputPalette visible={visible} />
       <div className="palette-heading">
-        <span>YOUR PALETTE</span>
+        <span>EDITABLE PALETTE</span>
         <span>{palette.length ? `${palette.length} colours` : '—'}</span>
       </div>
-      <div className="swatches">
-        {palette.map((rgb, i) => (
-          <span className="swatch-slot" key={i}>
-            <button
-              type="button"
-              className="editable-swatch"
-              disabled={disabled}
-              style={{ background: hex(rgb) }}
-              title={hex(rgb)}
-              aria-label={`Edit colour ${i + 1}: ${hex(rgb)}`}
-              onClick={() => setPopup(i)}
+      {!organised && (
+        <div className="swatches">
+          {palette.map((rgb, i) => (
+            <span className="swatch-slot" key={i}>
+              <button
+                type="button"
+                className="editable-swatch"
+                disabled={disabled}
+                style={{ background: hex(rgb) }}
+                title={hex(rgb)}
+                aria-label={`Edit colour ${i + 1}: ${hex(rgb)}`}
+                onClick={() => setPopup(i)}
+              />
+            </span>
+          ))}
+        </div>
+      )}
+      {organised && (
+        <>
+          <label className="advanced-field group-count">
+            Number of groups
+            <input
+              type="range"
+              min="1"
+              max={Math.min(12, palette.length) || 1}
+              value={Math.min(count, palette.length || 1)}
+              onChange={(e) => setCount(+e.target.value)}
             />
-          </span>
-        ))}
-      </div>
+          </label>
+          <div className="colour-groups">
+            {groups.map((g, i) => (
+              <div key={i} className="colour-group">
+                <button
+                  type="button"
+                  className="secondary-button group-banner"
+                  disabled={disabled}
+                  onClick={() => editGroup(g.slots)}
+                >
+                  <span style={{ background: hex(g.representative) }} />
+                  Edit group {i + 1} · {g.slots.length}
+                </button>
+                <div className="swatches">
+                  {g.slots.map((slot) => (
+                    <button
+                      key={slot}
+                      type="button"
+                      className="editable-swatch"
+                      disabled={disabled}
+                      style={{ background: hex(palette[slot]) }}
+                      title={hex(palette[slot])}
+                      aria-label={`Edit colour ${slot + 1}: ${hex(palette[slot])}`}
+                      onClick={() => setPopup(slot)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="field-note">
+            Groups shift together while retaining their relative shades. Flat view restores the
+            original arrangement.
+          </p>
+        </>
+      )}
       <div className="palette-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={!palette.length}
+          onClick={() => setOrganised(!organised)}
+        >
+          {organised ? 'Flat palette' : 'Organise colours'}
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={disabled || palette.length < 2}
+          onClick={() => {
+            setAverage(true);
+            setChecked([]);
+          }}
+        >
+          Unify colours
+        </button>
         <button
           type="button"
           className="secondary-button"
@@ -358,6 +473,62 @@ export function PalettePanel({
           ? 'Choose a swatch to change it. Transparency is separate.'
           : 'A converted preview reveals its editable swatches.'}
       </p>
+      {group && group.every((i) => i < palette.length) && (
+        <ColourPicker
+          initial={averageColours(group.map((i) => palette[i]))}
+          palette={palette}
+          close={() => editGroup(null)}
+          apply={(rgb) => {
+            onBatch(shiftGroup(palette, group, rgb));
+            editGroup(null);
+          }}
+        />
+      )}
+      {average && (
+        <Popup title="Unify colours" close={() => setAverage(false)}>
+          <p className="field-note">
+            Select two or more editable swatches. Their perceptual average replaces each selected
+            colour.
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setChecked(palette.map((_, i) => i))}
+          >
+            Select all colours
+          </button>
+          <div className="swatches">
+            {palette.map((rgb, i) => (
+              <button
+                key={i}
+                className="editable-swatch unify-swatch"
+                type="button"
+                style={{ background: hex(rgb) }}
+                aria-label={`Select colour ${i + 1}: ${hex(rgb)}`}
+                aria-pressed={checked.includes(i)}
+                onClick={() =>
+                  setChecked(checked.includes(i) ? checked.filter((n) => n !== i) : [...checked, i])
+                }
+              />
+            ))}
+          </div>
+          {selected.length > 1 && (
+            <p>Average: {hex(averageColours(selected.map((i) => palette[i])))}</p>
+          )}
+          <button
+            type="button"
+            className="primary-button"
+            disabled={selected.length < 2 || disabled}
+            onClick={() => {
+              const rgb = averageColours(selected.map((i) => palette[i]));
+              onBatch(selected.map((slot) => ({ slot, rgb })));
+              setAverage(false);
+            }}
+          >
+            Apply average colour
+          </button>
+        </Popup>
+      )}
       {popup === 'code' && (
         <PaletteCode
           colours={colours}

@@ -39,9 +39,8 @@ steps. The horizontal, vertical and both diagonal buttons give you starting poin
   dragging its centre, and turn it with **Mask rotation**.
 - For a quadratic curve, drag either endpoint along the edge and the middle handle
   inside the preview to change the bend.
-- For freehand, drag or touch the preview. CRTVD closes the stroke back to its first point
-  when that gap is shorter than joining its ends to the perimeter. Otherwise it projects
-  both ends to their nearest edges and connects them by the shorter path around the border.
+- For freehand, drag or touch the preview. CRTVD looks for nearby colour transitions
+  to close bigger gaps, with endpoint or border closure as a fallback.
 
 **Swap sides** exchanges the source and conversion, including inside and outside
 the closed shapes. Keyboard users can move the centre and bend handles with the arrow keys.
@@ -134,3 +133,46 @@ a public-domain bitmap font.
 
 The colour curves use the input/output convention described in [Frame.io’s guide](https://blog.frame.io/2017/09/20/beginners-guide-to-color-curves/)
 and [PremiumBeat’s overview](https://www.premiumbeat.com/blog/color-grading-with-curves/).
+
+## Layer stack, multiple masks and source detail
+
+In **Advanced settings → Layers**, enable the stack to edit the source and conversion
+as individual layers. The top row is rendered last. The up/down buttons reorder the
+stack, the circle toggles visibility, and **Layer opacity** blends that layer into the
+ones below. Select **Conversion** for the existing effects, or **Add adjustment layer**
+to apply a separate set of curves, blur, fringing and ASCII to the stack beneath it.
+An adjustment never changes the input file. Everything is composited on the device,
+one frame at a time for animation.
+
+Select a layer and use **Add mask** for each straight, curved, ellipse, rectangular or
+freehand shape. Mask areas on a layer are combined as a union. Choose **Active mask** to
+edit one without replacing the others. The grid and handles are editor guides only.
+A long open freehand stroke uses nearby RGB and alpha edges to find a closure. If
+there is no strong nearby edge, it falls back to the geometric endpoint or border
+closure. This is local boundary tracing rather than automatic object recognition.
+
+**Apply selected resolution to original** is checked by default. Uncheck it to keep
+source detail in the composite. The conversion stays at the selected processing
+resolution and scales with nearest-neighbour sampling. Output uses the source aspect
+ratio and resolution up to 2,073,600 pixels; animation duration, frame and file size
+limits still apply. A detailed GIF still has a 256-entry colour table.
+
+The simple blend's current mask transfers to the Original layer when you enable the
+stack. Hard blends become hard masks; soft blends become feathered masks. Pyramid
+blending is still available under **Return to simple blend**.
+
+## Live swatches and palette organisation
+
+**Colours in the preview** samples up to 32 frequent colours from each visible region.
+Original uses a dashed outline, Converted a solid one, and Mixed a double outline.
+Curves and other effects refresh the samples as the preview renders. The animation
+swatches represent the rendered preview frame (or the first rendered export frame
+before encoding); use the frame picker to inspect a different time. GIF and lossy
+video encoding can change the final set.
+
+The **Editable palette** holds the base slots used for effects, palette sharing and
+recolouring. **Organise colours** groups nearby slots in perceptual OKLab space.
+Choose a representative to shift its group together while preserving relative
+differences where the display gamut allows. **Flat palette** restores the normal
+view without undoing edits. **Unify colours** replaces any selected slots with their
+perceptual average while keeping the slot indices, so colour-target selections still work.

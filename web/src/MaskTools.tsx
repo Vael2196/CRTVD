@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent } from 'react';
 import { edgePoint, finishStroke, MAX_STROKE, outline } from './maskGeometry';
 import type { MaskShape, Point } from './maskGeometry';
+import { traceClosure } from './edgeTrace';
 import type { Effects } from './effects';
 
 export function MaskOptions({
@@ -113,11 +114,11 @@ export function MaskOptions({
       {shape === 'freehand' && (
         <>
           <p className="field-note">
-            Draw on the preview. CRTVD closes the outline at the nearest endpoint or image border.
+            Draw on the preview. CRTVD tries to follow nearby colour edges to close large gaps.
           </p>
           <button
             type="button"
-            className="text-button"
+            className="text-button clear-outline"
             disabled={!effects.stroke.length}
             onClick={() => update({ stroke: [] })}
           >
@@ -136,10 +137,12 @@ export function MaskOverlay({
   effects,
   change,
   disabled,
+  getImage,
 }: {
   effects: Effects;
   change(next: Effects): void;
   disabled?: boolean;
+  getImage?(): ImageData | undefined;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState<[number, number]>([1, 1]);
@@ -246,7 +249,13 @@ export function MaskOverlay({
           }}
           onPointerUp={(e) => {
             if (!drawing.current) return;
-            const stroke = finishStroke([...drawing.current, point(e)], w, h);
+            const end = point(e),
+              path = [...drawing.current, end],
+              start = path[0];
+            const gap = Math.hypot((end[0] - start[0]) * w, (end[1] - start[1]) * h);
+            const raster = gap > 12 ? getImage?.() : undefined;
+            const closure = raster ? traceClosure(raster, end, start) : undefined;
+            const stroke = closure?.length ? [...path, ...closure] : finishStroke(path, w, h);
             drawing.current = null;
             setDraft(null);
             if (stroke.length >= 3) change({ ...effects, stroke });

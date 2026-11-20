@@ -46,6 +46,8 @@ media upload or account required.
 - **Source blends and lens effects.** Drag either end of a split to blend the source and
   conversion, or draw a mask. Add RGB curves, blur, chromatic aberration, purple fringing or
   ASCII glyphs, with the option to target or protect palette colours directly in the preview.
+- **Local layers and live swatches.** Stack the original, conversion and masked adjustments.
+  Inspect colours in the preview, shift groups in the editable palette or unify their average.
 - **Useful exports.** Save transparent PNGs at their processing size or an integer pixel scale.
   Export animations as GIF, WebM or MP4 where the browser supports the required codecs.
 - **An interface with an earlier-web feel.** Bevelled panels, blue title bars, a tiled navy

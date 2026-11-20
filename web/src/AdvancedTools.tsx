@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import type { PointerEvent } from 'react';
+import type { PointerEvent, ReactNode } from 'react';
 import { DEFAULT_EFFECTS, edgePoint, nearestEdge, separateEndpoint } from './effects';
 import type { Effects } from './effects';
 import { EffectOptions } from './EffectOptions';
@@ -14,6 +14,11 @@ export function AdvancedSettings({
   pickDisabled,
   change,
   disabled,
+  layerTools,
+  layered,
+  showEffects = true,
+  keepSourceDetail,
+  setKeepSourceDetail,
 }: {
   effects?: Effects;
   palette: number[];
@@ -22,6 +27,11 @@ export function AdvancedSettings({
   pickDisabled?: boolean;
   change(effects: Effects): void;
   disabled?: boolean;
+  layerTools?: ReactNode;
+  layered?: boolean;
+  showEffects?: boolean;
+  keepSourceDetail?: boolean;
+  setKeepSourceDetail?(value: boolean): void;
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -40,72 +50,95 @@ export function AdvancedSettings({
       <div id={id} hidden={!open}>
         {open && (
           <fieldset disabled={disabled}>
-            <label className="advanced-field">
-              Blend with source
-              <select
-                value={effects.blend}
-                onChange={(e) => update({ blend: e.target.value as Effects['blend'] })}
-              >
-                <option value="off">Off</option>
-                <option value="hard">Direct seam</option>
-                <option value="feather">Feather / alpha blend</option>
-                <option value="pyramid">Pyramid blend</option>
-              </select>
-            </label>
-            {effects.blend !== 'off' && <MaskOptions effects={effects} update={update} />}
-            {effects.blend === 'feather' && (
-              <label className="advanced-field">
-                Feather width
-                <span className="advanced-value" aria-hidden="true">
-                  {Math.round(effects.feather * 100)}%
-                </span>
+            {layerTools}
+            {!layered && (
+              <>
+                <label className="advanced-field">
+                  Blend with source
+                  <select
+                    value={effects.blend}
+                    onChange={(e) => update({ blend: e.target.value as Effects['blend'] })}
+                  >
+                    <option value="off">Off</option>
+                    <option value="hard">Direct seam</option>
+                    <option value="feather">Feather / alpha blend</option>
+                    <option value="pyramid">Pyramid blend</option>
+                  </select>
+                </label>
+                {effects.blend !== 'off' && <MaskOptions effects={effects} update={update} />}
+                {effects.blend === 'feather' && (
+                  <label className="advanced-field">
+                    Feather width
+                    <span className="advanced-value" aria-hidden="true">
+                      {Math.round(effects.feather * 100)}%
+                    </span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="50"
+                      value={Math.round(effects.feather * 100)}
+                      onChange={(e) => update({ feather: +e.target.value / 100 })}
+                    />
+                  </label>
+                )}
+              </>
+            )}
+            {(layered || effects.blend !== 'off') && (
+              <label className="effect-checkbox detail-toggle">
                 <input
-                  type="range"
-                  min="1"
-                  max="50"
-                  value={Math.round(effects.feather * 100)}
-                  onChange={(e) => update({ feather: +e.target.value / 100 })}
+                  type="checkbox"
+                  checked={!keepSourceDetail}
+                  onChange={(e) => setKeepSourceDetail?.(!e.target.checked)}
                 />
+                Apply selected resolution to original
               </label>
             )}
-            <label className="advanced-field">
-              Chromatic aberration
-              <span className="advanced-value" aria-hidden="true">
-                {Math.round(effects.aberration * 100)}%
-              </span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={Math.round(effects.aberration * 100)}
-                onChange={(e) => update({ aberration: +e.target.value / 100 })}
-              />
-            </label>
-            <label className="advanced-field">
-              Purple fringing
-              <span className="advanced-value" aria-hidden="true">
-                {Math.round(effects.purple * 100)}%
-              </span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={Math.round(effects.purple * 100)}
-                onChange={(e) => update({ purple: +e.target.value / 100 })}
-              />
-            </label>
-            <EffectOptions
-              effects={effects}
-              palette={palette}
-              update={update}
-              picking={picking}
-              onPick={onPick}
-              pickDisabled={pickDisabled}
-            />
-            <CurveEditor curves={effects.curves} change={(curves) => update({ curves })} />
-            <button type="button" className="text-button" onClick={() => change(DEFAULT_EFFECTS)}>
-              Reset effects
-            </button>
+            {showEffects && (
+              <>
+                <label className="advanced-field">
+                  Chromatic aberration
+                  <span className="advanced-value" aria-hidden="true">
+                    {Math.round(effects.aberration * 100)}%
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={Math.round(effects.aberration * 100)}
+                    onChange={(e) => update({ aberration: +e.target.value / 100 })}
+                  />
+                </label>
+                <label className="advanced-field">
+                  Purple fringing
+                  <span className="advanced-value" aria-hidden="true">
+                    {Math.round(effects.purple * 100)}%
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={Math.round(effects.purple * 100)}
+                    onChange={(e) => update({ purple: +e.target.value / 100 })}
+                  />
+                </label>
+                <EffectOptions
+                  effects={effects}
+                  palette={palette}
+                  update={update}
+                  picking={picking}
+                  onPick={onPick}
+                  pickDisabled={pickDisabled}
+                />
+                <CurveEditor curves={effects.curves} change={(curves) => update({ curves })} />
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => change(DEFAULT_EFFECTS)}
+                >
+                  Reset effects
+                </button>
+              </>
+            )}
           </fieldset>
         )}
       </div>
@@ -117,10 +150,12 @@ export function BlendHandles({
   effects,
   change,
   disabled,
+  getImage,
 }: {
   effects: Effects;
   change(effects: Effects): void;
   disabled?: boolean;
+  getImage?(): ImageData | undefined;
 }) {
   const edgeHandles = effects.shape === 'line' || effects.shape === 'curve';
   const [ax, ay] = edgePoint(effects.a),
@@ -142,6 +177,11 @@ export function BlendHandles({
   return (
     <div className="blend-handles" role="group" aria-label="Blend divider">
       <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path
+          className="edit-grid"
+          d="M33.33 0V100 M66.67 0V100 M0 33.33H100 M0 66.67H100"
+          vectorEffect="non-scaling-stroke"
+        />
         {effects.shape === 'line' && (
           <line
             x1={ax * 100}
@@ -153,7 +193,7 @@ export function BlendHandles({
         )}
       </svg>
       {effects.shape !== 'line' && (
-        <MaskOverlay effects={effects} change={change} disabled={disabled} />
+        <MaskOverlay effects={effects} change={change} disabled={disabled} getImage={getImage} />
       )}
       {edgeHandles &&
         (['a', 'b'] as const).map((which, i) => {

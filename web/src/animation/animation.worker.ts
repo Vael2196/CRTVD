@@ -1,3 +1,4 @@
+import { renderSize } from '../layers';
 import { uniqueColours } from '../palettes';
 import type { PaletteTrainer } from '@vael2196/crtvd';
 import { createProcessor } from '@vael2196/crtvd';
@@ -31,7 +32,14 @@ scope.onmessage = async ({ data }) => {
     }
     validateOptions(data.options);
     const o = data.options;
-    const { width, height } = animationSize(clip.info, o.settings.targetWidth);
+    const low = animationSize(clip.info, o.settings.targetWidth);
+    const { width, height } = renderSize(
+      clip.info.width,
+      clip.info.height,
+      low.width,
+      low.height,
+      o.settings,
+    );
     const url = new URL(`${import.meta.env.BASE_URL}wasm/crtvd.js`, scope.location.origin);
     const engine = await createProcessor({ loaderUrl: url });
     // An already analysed clip can preview with its full palette. Explicit
@@ -44,7 +52,7 @@ scope.onmessage = async ({ data }) => {
     };
     disposeEngine = () => engine.dispose();
     const gif = o.format === 'gif';
-    processor = new FrameProcessor(engine, width, height, settings, gif ? 255 : 256);
+    processor = new FrameProcessor(engine, low.width, low.height, settings, gif ? 255 : 256);
     const prepare = (frame: Parameters<FrameProcessor['process']>[0]) =>
       gif ? frame : flattenFrame(frame, o.matte);
     if (data.type === 'preview') {
@@ -60,6 +68,7 @@ scope.onmessage = async ({ data }) => {
             height,
             rgba,
             slots,
+            visibleColours: result.visibleColours,
             sampleTime: sample,
             palette: Array.from(result.palette),
             originalPalette: Array.from(result.originalPalette),
@@ -155,12 +164,14 @@ scope.onmessage = async ({ data }) => {
     let count = 0;
     let palette: number[] = [];
     let originalPalette: number[] = [];
+    let visibleColours;
     for await (const frame of clip.frames(o.fps)) {
       check(++count);
-      const result = processor.process(prepare(frame));
+      const result = processor.process(prepare(frame), count === 1);
       if (count === 1) {
         palette = Array.from(result.palette);
         originalPalette = Array.from(result.originalPalette);
+        visibleColours = result.visibleColours;
       }
       if (gifPalette) {
         const indexed = engine.processFrame(
@@ -188,6 +199,7 @@ scope.onmessage = async ({ data }) => {
         duration: clip.info.duration,
         palette,
         originalPalette,
+        visibleColours,
       },
       [buffer],
     );

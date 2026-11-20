@@ -479,3 +479,103 @@ test('animation picker can select a later GIF frame and transfers the resulting 
   ]);
   expect(gif.clip.info.duration).toBeCloseTo(0.3);
 });
+
+test('layer masks preserve source detail and show live original and graded colours', async ({
+  page,
+}) => {
+  await image(page, 'contrast');
+  await importCode(page, 'CRTVD1:000000');
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByRole('button', { name: 'Enable layer stack' }).click();
+  await page.getByRole('button', { name: 'Show Original' }).click();
+  await page.getByRole('button', { name: 'Add mask', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Blend shape', exact: true }).selectOption('rectangle');
+  await page.getByRole('button', { name: 'Add mask', exact: true }).click();
+  await expect(
+    page.getByRole('combobox', { name: 'Active mask', exact: true }).locator('option'),
+  ).toHaveCount(2);
+  await page.getByRole('button', { name: 'Remove mask', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove mask', exact: true }).click();
+  await page.getByRole('button', { name: 'Add adjustment layer' }).click();
+  await page.getByRole('button', { name: 'Edit curves' }).click();
+  await page.getByLabel('Curve channel').selectOption('green');
+  await page.getByLabel('Output level').fill('128');
+  const visible = page.getByRole('group', { name: 'Colours in the preview' });
+  await expect(visible.getByRole('img', { name: '#008000' })).toBeVisible();
+  expect(pixel(await exportPng(page), 30, 16)).toEqual([0, 128, 0, 255]);
+  await page.getByRole('button', { name: 'Hide Adjustment' }).click();
+  await page.getByRole('button', { name: 'Move Original down' }).click();
+  const converted = await exportPng(page);
+  expect(pixel(converted, 2, 2)).toEqual([0, 0, 0, 255]);
+  await page.getByRole('button', { name: 'Move Original up' }).click();
+  await expect(visible.getByRole('img', { name: '#FFFFFF' })).toBeVisible();
+  await page.getByLabel('Output width').fill('32');
+  expect((await exportPng(page)).width).toBe(32);
+  await page.getByLabel('Apply selected resolution to original').uncheck();
+  expect((await exportPng(page)).width).toBe(65);
+  const preview = page.locator('.pinned-preview');
+  await page.getByRole('button', { name: 'Add adjustment layer' }).scrollIntoViewIfNeeded();
+  const box = (await preview.boundingBox())!;
+  expect(box.y + box.height).toBeGreaterThan(0);
+  expect(box.y).toBeLessThan(await page.evaluate(() => innerHeight));
+});
+
+test('palette grouping can edit relatives and unify their average in PNG export', async ({
+  page,
+}) => {
+  await image(page, 'contrast');
+  await importCode(page, 'CRTVD1:202040303060');
+  await page.getByRole('button', { name: 'Organise colours' }).click();
+  await page.getByLabel('Number of groups').fill('1');
+  await page.getByRole('button', { name: /Edit group 1/ }).click();
+  await page.getByLabel('Hex', { exact: true }).fill('#33704F');
+  await page.getByRole('button', { name: 'Apply colour' }).click();
+  const split = await exportPng(page);
+  expect(pixel(split, 2, 2)).not.toEqual(pixel(split, 45, 2));
+  await page.getByRole('button', { name: 'Flat palette' }).click();
+  await page.getByRole('button', { name: 'Unify colours', exact: true }).click();
+  await page.getByRole('button', { name: 'Select all colours' }).click();
+  await page.getByRole('button', { name: 'Apply average colour' }).click();
+  const merged = await exportPng(page);
+  expect(pixel(merged, 2, 2)).toEqual(pixel(merged, 45, 2));
+});
+
+test('the animation worker previews and exports a layered clip at source dimensions', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Animation', exact: true }).click();
+  const w = 32,
+    h = 16;
+  const file = fixtureGif(
+    [1, 3].map((index) => ({ pixels: Array(w * h).fill(index), delay: 10 })),
+    w,
+    h,
+  );
+  await page
+    .getByLabel('Upload animation')
+    .setInputFiles({ name: 'layers.gif', mimeType: 'image/gif', buffer: Buffer.from(file) });
+  await expect(convertButton(page)).toBeEnabled();
+  await importCode(page, 'CRTVD1:000000FF00000000FF');
+  await page.getByLabel('Output width').fill('16');
+  await page.getByRole('button', { name: 'Advanced settings' }).click();
+  await page.getByRole('button', { name: 'Enable layer stack' }).click();
+  await page.getByRole('button', { name: 'Show Original' }).click();
+  await page.getByRole('button', { name: 'Add adjustment layer' }).click();
+  await page.getByRole('button', { name: 'Edit curves' }).click();
+  await page.getByLabel('Curve channel').selectOption('green');
+  await page.getByLabel('Output level').fill('128');
+  await page.getByLabel('Apply selected resolution to original').uncheck();
+  await expect(
+    page
+      .getByRole('group', { name: 'Colours in the preview' })
+      .getByRole('img', { name: '#FF8000' }),
+  ).toBeVisible();
+  await convertButton(page).click();
+  const gif = await exportGif(page);
+  expect([gif.clip.info.width, gif.clip.info.height]).toEqual([32, 16]);
+  expect(gif.frames.map((frame) => frame.slice(0, 4))).toEqual([
+    [255, 128, 0, 255],
+    [0, 128, 255, 255],
+  ]);
+});

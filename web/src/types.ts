@@ -1,3 +1,4 @@
+import type { Layer, PreviewColours } from './layers';
 import type { PaletteEdit } from './palettes';
 import type { Effects } from './effects';
 
@@ -16,6 +17,8 @@ export interface Settings {
   importedPalette?: number[];
   paletteEdit?: PaletteEdit;
   effects?: Effects;
+  layers?: Layer[];
+  keepSourceDetail?: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -58,6 +61,7 @@ export type WorkerResponse =
       slots?: ArrayBuffer;
       palette: number[];
       originalPalette: number[];
+      visibleColours?: PreviewColours;
       milliseconds: number;
     }
   | { type: 'error'; message: string; generation?: number; id?: number };

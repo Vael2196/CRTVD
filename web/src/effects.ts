@@ -157,6 +157,10 @@ function sampleSource(input: Pixels, iw: number, ih: number, w: number, h: numbe
   return { data, w, h };
 }
 
+export function sourcePixels(input: Pixels, iw: number, ih: number, w: number, h: number) {
+  return iw === w && ih === h ? Uint8Array.from(input) : toBytes(sampleSource(input, iw, ih, w, h));
+}
+
 const weights = [1, 4, 6, 4, 1];
 function gaussianDown({ data, w, h }: FloatImage, channels: number): FloatImage {
   const nw = Math.ceil(w / 2),
@@ -316,9 +320,12 @@ export class EffectRenderer {
       }
     }
   }
+  sourceWeights() {
+    return this.transition ?? this.masks[0]?.data;
+  }
   /** The picker ignores areas displaying only the original layer. */
   hideSourceSlots(slots: Uint16Array) {
-    const source = this.transition ?? this.masks[0]?.data;
+    const source = this.sourceWeights();
     if (source) for (let p = 0; p < slots.length; p++) if (source[p] === 1) slots[p] = NO_SWATCH;
   }
   apply(

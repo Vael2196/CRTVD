@@ -1,8 +1,7 @@
 import { createProcessor } from '@vael2196/crtvd';
 import type { Processor, Frame, ProcessedFrame } from '@vael2196/crtvd';
 import { quantisationPalette, remapPalette } from './palettes';
-import { effectEnabled, EffectRenderer } from './effects';
-import { slotIndex } from './selection';
+import { FrameComposer } from './layers';
 import type { WorkerRequest, WorkerResponse } from './types';
 const worker = self as unknown as {
   location: Location;
@@ -67,24 +66,18 @@ worker.onmessage = ({ data }) => {
           result: engine.processFrame(source.frame, { ...o, width, height, customPalette: custom }),
         };
       const result = cached.result;
-      let pixels = remapPalette(o.paletteEdit)(result.data);
-      const slots =
-        o.effects && o.effects.colourScope !== 'all'
-          ? slotIndex(result.data, result.palette)
-          : undefined;
-      if (effectEnabled(o.effects)) {
-        const renderer = new EffectRenderer(width, height, o.effects);
-        pixels = renderer.apply(
-          source.frame.data,
-          source.frame.width,
-          source.frame.height,
-          pixels,
-          result.data,
-          result.palette,
-          slots,
-        );
-        if (slots) renderer.hideSourceSlots(slots);
-      }
+      const composer = new FrameComposer(source.frame.width, source.frame.height, width, height, o);
+      const {
+        rgba: pixels,
+        slots,
+        visibleColours,
+      } = composer.render(
+        source.frame.data,
+        remapPalette(o.paletteEdit)(result.data),
+        result.data,
+        result.palette,
+        true,
+      );
       // The cache owns the original conversion; transfer only a fresh buffer.
       const rgba = (pixels === result.data ? pixels.slice() : pixels).buffer;
       worker.postMessage(
@@ -92,11 +85,12 @@ worker.onmessage = ({ data }) => {
           type: 'result',
           id: data.id,
           generation: data.generation,
-          width: result.width,
-          height: result.height,
+          width: composer.width,
+          height: composer.height,
           rgba,
           slots: slots?.buffer,
           palette: o.paletteEdit?.colours ?? Array.from(result.palette),
+          visibleColours,
           originalPalette: Array.from(result.palette),
           milliseconds: performance.now() - started,
         },

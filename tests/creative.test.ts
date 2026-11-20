@@ -1,3 +1,7 @@
+import { FrameComposer, initialLayers, newMask } from '../web/src/layers';
+import type { Layer } from '../web/src/layers';
+import { averageColours, organisePalette, shiftGroup } from '../web/src/paletteGroups';
+import { traceClosure } from '../web/src/edgeTrace';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -427,4 +431,125 @@ test('freehand closes near its endpoint or projects onto the nearest perimeter',
   }).apply(a, 30, 30, b);
   assert.equal(result[(15 * 30 + 2) * 4], 255);
   assert.equal(result[(15 * 30 + 20) * 4], 0);
+});
+
+test('layer ordering, opacity, and multiple masks produce distinct source/converted colours', () => {
+  const w = 32,
+    h = 24;
+  const src = solid(w, h, [240, 40, 10, 255]);
+  const converted = solid(w, h, [10, 20, 220, 255]);
+  const palette = [10, 20, 220];
+  const [conversion, original] = initialLayers();
+  const windows = [0.25, 0.75].map((x, i) =>
+    newMask(i + 1, {
+      ...DEFAULT_EFFECTS,
+      shape: 'rectangle',
+      centre: [x, 0.5],
+      span: [0.2, 0.4],
+      feather: 0,
+    }),
+  );
+  const masked = { ...original, visible: true, masks: windows };
+  const run = (layers: Layer[]) =>
+    new FrameComposer(w, h, w, h, { ...DEFAULT_SETTINGS, layers }).render(
+      src,
+      converted,
+      converted,
+      palette,
+      true,
+    );
+  const at = (pixels: Uint8Array, x: number) =>
+    Array.from(pixels.slice((12 * w + x) * 4, (12 * w + x) * 4 + 4));
+  const visible = run([conversion, masked]);
+  assert.deepEqual(at(visible.rgba, 8), [240, 40, 10, 255]);
+  assert.deepEqual(at(visible.rgba, 16), [10, 20, 220, 255]);
+  assert.deepEqual(at(visible.rgba, 24), [240, 40, 10, 255]);
+  assert.deepEqual(visible.visibleColours?.original, [240, 40, 10]);
+  assert.deepEqual(visible.visibleColours?.converted, [10, 20, 220]);
+  assert.deepEqual(run([masked, conversion]).rgba, converted);
+  assert.deepEqual(run([conversion, { ...masked, visible: false }]).rgba, converted);
+  assert.equal(run([masked]).rgba[(12 * w + 16) * 4 + 3], 0);
+  assert.ok(run([conversion, { ...masked, opacity: 0.5 }]).visibleColours!.mixed.length);
+  const edit: Layer = {
+    id: 3,
+    kind: 'adjustment',
+    visible: true,
+    opacity: 1,
+    masks: [windows[1]],
+    adjustment: {
+      ...DEFAULT_EFFECTS,
+      curves: {
+        green: [
+          [0, 255],
+          [255, 255],
+        ],
+      },
+    },
+  };
+  const adjusted = run([conversion, masked, edit]);
+  assert.deepEqual(at(adjusted.rgba, 24), [240, 255, 10, 255]);
+  assert.deepEqual(at(adjusted.rgba, 8), [240, 40, 10, 255]);
+});
+
+test('source detail uses the larger canvas while the conversion stays pixelated', () => {
+  const src = solid(8, 4, [230, 0, 0, 255]);
+  src.set([80, 0, 0, 255], 0);
+  const low = solid(2, 1, [0, 0, 240, 255]);
+  const composer = new FrameComposer(8, 4, 2, 1, {
+    ...DEFAULT_SETTINGS,
+    effects: { ...DEFAULT_EFFECTS, blend: 'hard' },
+    keepSourceDetail: true,
+  });
+  const { rgba, visibleColours } = composer.render(src, low, low, [0, 0, 240], true);
+  assert.deepEqual([composer.width, composer.height], [8, 4]);
+  assert.deepEqual([...rgba.slice(0, 4)], [80, 0, 0, 255]);
+  assert.deepEqual([...rgba.slice(4, 8)], [230, 0, 0, 255]);
+  assert.deepEqual([...rgba.slice(-16)], Array.from(solid(4, 1, [0, 0, 240, 255])));
+  assert.ok(visibleColours!.original.includes(80));
+});
+
+test('perceptual palette groups retain slots, with distinct shifts and a single unified average', () => {
+  const palette: RGB[] = [
+    [208, 40, 40],
+    [230, 46, 54],
+    [20, 80, 220],
+    [28, 82, 225],
+  ];
+  const groups = organisePalette(palette, 2);
+  assert.deepEqual(
+    groups.map((g) => g.slots),
+    [
+      [0, 1],
+      [2, 3],
+    ],
+  );
+  const [a, b] = shiftGroup(palette, groups[0].slots, [80, 180, 100]);
+  assert.deepEqual([a.slot, b.slot], [0, 1]);
+  assert.notDeepEqual(a.rgb, b.rgb);
+  assert.ok(a.rgb[1] > a.rgb[0] && b.rgb[1] > b.rgb[0]);
+  const avg = averageColours(palette);
+  assert.deepEqual(avg, averageColours([...palette].reverse()));
+  assert.notDeepEqual(avg, palette[0]);
+});
+
+test('edge-guided closure bends along a high-contrast boundary and falls back on flat pixels', () => {
+  const w = 64,
+    h = 64;
+  const pixels = new Uint8ClampedArray(w * h * 4).fill(255);
+  for (let y = 16; y <= 45; y++)
+    for (let x = 15; x <= 47; x++) pixels.set([0, 0, 0, 255], (y * w + x) * 4);
+  const image = { data: pixels, width: w, height: h, colorSpace: 'srgb' } as ImageData;
+  const route = traceClosure(image, [0.24, 0.7], [0.74, 0.27]);
+  assert.ok(route && route.length > 10);
+  assert.ok(
+    route.some(([x, y]) => y >= 0.68 && x > 0.5) || route.some(([x, y]) => y <= 0.275 && x < 0.5),
+  );
+  assert.equal(
+    traceClosure(
+      { ...image, data: new Uint8ClampedArray(w * h * 4).fill(255) },
+      [0.24, 0.7],
+      [0.74, 0.27],
+    ),
+    undefined,
+  );
 });

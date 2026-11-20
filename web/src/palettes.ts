@@ -153,7 +153,7 @@ export function hsvToRgb([h, s, v]: RGB): RGB {
 const linear = (byte: number) =>
   byte <= 10 ? byte / 3294.6 : ((byte / 255 + 0.055) / 1.055) ** 2.4;
 
-function lab(rgb: RGB): RGB {
+export function lab(rgb: RGB): RGB {
   const [r, g, b] = rgb.map(linear);
   const l = Math.cbrt(0.41222147 * r + 0.53633254 * g + 0.05144599 * b);
   const m = Math.cbrt(0.2119035 * r + 0.68069955 * g + 0.10739696 * b);

@@ -2,14 +2,14 @@ import type { Processor, PaletteTrainer } from '@vael2196/crtvd';
 import type { ClipFrame } from './types';
 import type { Settings } from '../types';
 import { quantisationPalette, remapPalette } from '../palettes';
-import { slotIndex } from '../selection';
-import { effectEnabled, EffectRenderer } from '../effects';
+import { effectEnabled } from '../effects';
+import { FrameComposer } from '../layers';
 
 export class FrameProcessor {
   private trainer: PaletteTrainer | undefined;
   private palette: Uint8Array | undefined;
   private recolour: ReturnType<typeof remapPalette>;
-  private effects?: EffectRenderer;
+  private composer?: FrameComposer;
   constructor(
     private engine: Processor,
     private width: number,
@@ -19,14 +19,12 @@ export class FrameProcessor {
   ) {
     this.palette = quantisationPalette(settings, maxColours);
     this.recolour = remapPalette(settings.paletteEdit);
-    if (effectEnabled(settings.effects))
-      this.effects = new EffectRenderer(width, height, settings.effects);
   }
   get needsTraining() {
     return !this.palette && this.settings.palette === 'adaptive';
   }
   get activeEffects() {
-    return !!this.effects;
+    return !!this.settings.layers || effectEnabled(this.settings.effects);
   }
   private options() {
     const { palette, dither, strength, resample, colours } = this.settings;
@@ -50,22 +48,24 @@ export class FrameProcessor {
       { data: frame.rgba, width: frame.width, height: frame.height },
       { ...this.options(), customPalette: this.palette },
     );
-    let rgba = this.recolour(result.data);
-    const slots = picking ? slotIndex(result.data, result.palette) : undefined;
-    if (this.effects)
-      rgba = this.effects.apply(
-        frame.rgba,
-        frame.width,
-        frame.height,
-        rgba,
-        result.data,
-        result.palette,
-        slots,
-      );
-    if (slots) this.effects?.hideSourceSlots(slots);
+    this.composer ??= new FrameComposer(
+      frame.width,
+      frame.height,
+      this.width,
+      this.height,
+      this.settings,
+    );
+    const { rgba, slots, visibleColours } = this.composer.render(
+      frame.rgba,
+      this.recolour(result.data),
+      result.data,
+      result.palette,
+      picking,
+    );
     return {
       rgba,
       slots,
+      visibleColours,
       palette: this.settings.paletteEdit
         ? Uint8Array.from(this.settings.paletteEdit.colours)
         : result.palette,

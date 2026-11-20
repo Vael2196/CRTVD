@@ -1,3 +1,4 @@
+import type { PreviewColours } from '../layers';
 import type { Settings } from '../types';
 
 export type AnimationFormat = 'gif' | 'webm' | 'mp4';
@@ -51,6 +52,7 @@ export type AnimationResponse =
       height: number;
       palette: number[];
       originalPalette: number[];
+      visibleColours?: PreviewColours;
     }
   | { type: 'progress'; phase: 'palette' | 'effects' | 'encoding'; fraction: number; frame: number }
   | {
@@ -64,5 +66,6 @@ export type AnimationResponse =
       duration: number;
       palette: number[];
       originalPalette: number[];
+      visibleColours?: PreviewColours;
     }
   | { type: 'error'; message: string };

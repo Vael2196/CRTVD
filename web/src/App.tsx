@@ -1,6 +1,10 @@
+import { initialLayers, renderSize, setLayerEffects } from './layers';
+import type { Layer } from './layers';
+import { LayerTools, layerControls } from './LayerTools';
+import { edgeRaster } from './edgeTrace';
 import { pickSlot, toggleSlot } from './selection';
 import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, DragEvent } from 'react';
+import type { ChangeEvent, DragEvent, CSSProperties } from 'react';
 import { decodeImage, demoImage, downloadPng, maxOutputWidth, outputSize } from './media';
 import { DEFAULT_SETTINGS } from './types';
 import type { Settings, SourceImage } from './types';
@@ -32,6 +36,9 @@ function UploadIcon() {
 function StillImageEditor() {
   const [source, setSource] = useState<SourceImage | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [layerSelection, setLayerSelection] = useState<{ layer: number; mask?: number }>({
+    layer: 2,
+  });
   const [picking, setPicking] = useState(false);
   const [view, setView] = useState<'split' | 'output' | 'original'>('split');
   const [split, setSplit] = useState(50);
@@ -128,7 +135,23 @@ function StillImageEditor() {
     setSource(demoImage());
   };
   const size = source ? outputSize(source, settings.targetWidth) : { width: 160, height: 107 };
-  const effects = settings.effects ?? DEFAULT_EFFECTS;
+  const applyLayers = (layers?: Layer[]) => change('layers', layers);
+  const layerState = layerControls(settings.layers, layerSelection, applyLayers);
+  const legacyEffects = settings.effects ?? DEFAULT_EFFECTS;
+  const effects =
+    layerState.layer?.kind === 'adjustment'
+      ? (layerState.layer.adjustment ?? DEFAULT_EFFECTS)
+      : legacyEffects;
+  const maskEffects = settings.layers
+    ? layerState.maskEffects
+    : legacyEffects.blend === 'off'
+      ? undefined
+      : legacyEffects;
+  const changeEffects = (next: typeof effects) =>
+    setSettings((current) => setLayerEffects(current, next, layerState.layer));
+  const displaySize = source
+    ? renderSize(source.width, source.height, size.width, size.height, settings)
+    : size;
   const palette =
     settings.paletteEdit?.colours ??
     settings.importedPalette ??
@@ -337,6 +360,25 @@ function StillImageEditor() {
           <AdvancedSettings
             effects={effects}
             palette={palette}
+            layered={!!settings.layers}
+            showEffects={layerState.layer?.kind !== 'original'}
+            keepSourceDetail={settings.keepSourceDetail}
+            setKeepSourceDetail={(value) => change('keepSourceDetail', value)}
+            layerTools={
+              <LayerTools
+                layers={settings.layers}
+                selection={layerSelection}
+                select={setLayerSelection}
+                change={applyLayers}
+                enable={() => {
+                  applyLayers(initialLayers(legacyEffects));
+                  setLayerSelection({ layer: 2 });
+                  setView('output');
+                }}
+                exit={() => applyLayers(undefined)}
+              />
+            }
+
             picking={picking && effects.colourScope !== 'all'}
             onPick={() => {
               setPicking(!picking);
@@ -346,125 +388,135 @@ function StillImageEditor() {
               if (next.colourScope === 'all') setPicking(false);
               else if (effects.colourScope === 'all') setView('output');
               if (effects.blend === 'off' && next.blend !== 'off') setView('output');
-              change('effects', next);
+              changeEffects(next);
             }}
           />
         </aside>
         <div className="preview-panel">
-          <div className="preview-toolbar">
-            <div className="view-tabs" role="group" aria-label="Preview mode">
-              {(['split', 'output', 'original'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  aria-pressed={view === mode}
-                  onClick={() => {
-                    setView(mode);
-                    if (mode !== 'output') setPicking(false);
-                  }}
-                >
-                  {mode === 'split' ? 'Compare' : mode === 'output' ? 'Converted' : 'Original'}
-                </button>
-              ))}
+          <div className="pinned-preview">
+            <div className="preview-toolbar">
+              <div className="view-tabs" role="group" aria-label="Preview mode">
+                {(['split', 'output', 'original'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    aria-pressed={view === mode}
+                    onClick={() => {
+                      setView(mode);
+                      if (mode !== 'output') setPicking(false);
+                    }}
+                  >
+                    {mode === 'split' ? 'Compare' : mode === 'output' ? 'Converted' : 'Original'}
+                  </button>
+                ))}
+              </div>
+              <span className={`engine-status ${processing ? 'working' : ''}`} role="status">
+                <i />
+                {status}
+              </span>
             </div>
-            <span className={`engine-status ${processing ? 'working' : ''}`} role="status">
-              <i />
-              {status}
-            </span>
-          </div>
-          <div
-            className={`preview-stage ${dragging ? 'dragging' : ''}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={drop}
-          >
             <div
-              className="image-frame"
-              style={{
-                aspectRatio: source ? `${source.width} / ${source.height}` : '3 / 2',
-                maxWidth: source
-                  ? `min(100%, ${(600 * source.width) / source.height}px)`
-                  : undefined,
+              className={`preview-stage ${dragging ? 'dragging' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
               }}
-              aria-label="Image comparison"
+              onDragLeave={() => setDragging(false)}
+              onDrop={drop}
             >
-              <canvas
-                ref={originalCanvas}
-                className="original-image"
-                style={{
-                  visibility: view === 'output' ? 'hidden' : 'visible',
-                  clipPath: view === 'split' ? `inset(0 ${100 - split}% 0 0)` : undefined,
-                }}
-                aria-label="Original image preview"
-              />
-              <canvas
-                ref={previewCanvas}
-                className={`converted-image ${view === 'output' && effects.colourScope !== 'all' && (picking || effects.blend === 'off' || effects.shape !== 'freehand') ? 'colour-picking' : ''}`}
-                onClick={(event) => {
-                  if (
-                    effects.colourScope === 'all' ||
-                    (!picking && effects.shape === 'freehand' && effects.blend !== 'off') ||
-                    view === 'original' ||
-                    processing ||
-                    !result?.slots
-                  )
-                    return;
-                  const bounds = event.currentTarget.getBoundingClientRect();
-                  if (
-                    view === 'split' &&
-                    ((event.clientX - bounds.left) / bounds.width) * 100 < split
-                  )
-                    return;
-                  const slot = pickSlot(
-                    result.slots,
-                    result.width,
-                    result.height,
-                    (event.clientX - bounds.left) / bounds.width,
-                    (event.clientY - bounds.top) / bounds.height,
-                  );
-                  const effectColours = toggleSlot(
-                    effects.effectColours,
-                    slot,
-                    result.palette.length / 3,
-                  );
-                  if (effectColours !== effects.effectColours)
-                    change('effects', { ...effects, effectColours });
-                }}
-                style={{
-                  visibility: view === 'original' || !result ? 'hidden' : 'visible',
-                  clipPath: view === 'split' ? `inset(0 0 0 ${split}%)` : undefined,
-                }}
-                aria-label="Converted image preview"
-              />
-              {view === 'output' && result && effects.blend !== 'off' && !picking && (
-                <BlendHandles effects={effects} change={(next) => change('effects', next)} />
-              )}
-              {view === 'split' && result && (
-                <>
-                  <div className="split-line" style={{ left: `${split}%` }}>
-                    <span aria-hidden="true">↔</span>
-                  </div>
-                  <input
-                    className="split-slider"
-                    aria-label="Comparison position"
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={split}
-                    onChange={(e) => setSplit(+e.target.value)}
+              <div
+                className="image-frame"
+                style={
+                  {
+                    aspectRatio: source ? `${source.width} / ${source.height}` : '3 / 2',
+                    '--frame-ratio': source ? source.width / source.height : 1.5,
+                    maxWidth: source
+                      ? `min(100%, ${(600 * source.width) / source.height}px)`
+                      : undefined,
+                  } as CSSProperties
+                }
+                aria-label="Image comparison"
+              >
+                <canvas
+                  ref={originalCanvas}
+                  className="original-image"
+                  style={{
+                    visibility: view === 'output' ? 'hidden' : 'visible',
+                    clipPath: view === 'split' ? `inset(0 ${100 - split}% 0 0)` : undefined,
+                  }}
+                  aria-label="Original image preview"
+                />
+                <canvas
+                  ref={previewCanvas}
+                  className={`converted-image ${view === 'output' && effects.colourScope !== 'all' && (picking || effects.blend === 'off' || effects.shape !== 'freehand') ? 'colour-picking' : ''}`}
+                  onClick={(event) => {
+                    if (
+                      effects.colourScope === 'all' ||
+                      (!picking && effects.shape === 'freehand' && effects.blend !== 'off') ||
+                      view === 'original' ||
+                      processing ||
+                      !result?.slots
+                    )
+                      return;
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    if (
+                      view === 'split' &&
+                      ((event.clientX - bounds.left) / bounds.width) * 100 < split
+                    )
+                      return;
+                    const slot = pickSlot(
+                      result.slots,
+                      result.width,
+                      result.height,
+                      (event.clientX - bounds.left) / bounds.width,
+                      (event.clientY - bounds.top) / bounds.height,
+                    );
+                    const effectColours = toggleSlot(
+                      effects.effectColours,
+                      slot,
+                      result.palette.length / 3,
+                    );
+                    if (effectColours !== effects.effectColours)
+                      changeEffects({ ...effects, effectColours });
+                  }}
+                  style={{
+                    visibility: view === 'original' || !result ? 'hidden' : 'visible',
+                    clipPath: view === 'split' ? `inset(0 0 0 ${split}%)` : undefined,
+                  }}
+                  aria-label="Converted image preview"
+                />
+                {view === 'output' && result && maskEffects && !picking && (
+                  <BlendHandles
+                    key={layerState.mask?.id}
+                    effects={maskEffects}
+                    getImage={() => edgeRaster(originalCanvas.current)}
+                    change={settings.layers ? layerState.updateMask : changeEffects}
                   />
-                  <span className="image-tag original-tag">ORIGINAL</span>
-                  <span className="image-tag output-tag">CONVERTED</span>
-                </>
-              )}
-              {!result && (
-                <div className="image-loading">
-                  <span />
-                  {error ? 'Engine unavailable' : 'Preparing your pixels…'}
-                </div>
-              )}
+                )}
+                {view === 'split' && result && (
+                  <>
+                    <div className="split-line" style={{ left: `${split}%` }}>
+                      <span aria-hidden="true">↔</span>
+                    </div>
+                    <input
+                      className="split-slider"
+                      aria-label="Comparison position"
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={split}
+                      onChange={(e) => setSplit(+e.target.value)}
+                    />
+                    <span className="image-tag original-tag">ORIGINAL</span>
+                    <span className="image-tag output-tag">CONVERTED</span>
+                  </>
+                )}
+                {!result && (
+                  <div className="image-loading">
+                    <span />
+                    {error ? 'Engine unavailable' : 'Preparing your pixels…'}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="image-meta">
@@ -474,7 +526,7 @@ function StillImageEditor() {
             <span>
               {source ? `${source.width} × ${source.height}` : ''}
               <span className="meta-arrow">→</span>
-              {size.width} × {size.height}
+              {displaySize.width} × {displaySize.height}
             </span>
           </div>
           {(loadError || error) && (
@@ -484,6 +536,21 @@ function StillImageEditor() {
           )}
           <PalettePanel
             colours={palette}
+            visible={result?.visibleColours}
+            onBatch={(edits) =>
+              setSettings((s) =>
+                edits.reduce(
+                  (next, { slot, rgb }) =>
+                    editSwatch(
+                      next,
+                      s.importedPalette ?? s.customPalette ?? result?.originalPalette ?? palette,
+                      slot,
+                      rgb,
+                    ),
+                  s,
+                ),
+              )
+            }
             altered={!!(settings.paletteEdit || settings.importedPalette)}
             disabled={loading || processing}
             onEdit={(index, rgb) =>
